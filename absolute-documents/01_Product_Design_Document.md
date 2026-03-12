@@ -108,20 +108,22 @@ The MVP will **not** attempt to solve:
 - maximum ad duration: **10 seconds**
 - preferred MVP ad duration: **5–8 seconds**
 - insertion points must be selected from ranked candidate moments
-- processing should support long-form video, but demo scope may start with clips
+- MVP video scope: **10–20 minute videos** (YouTube-like clips)
+- single insertion strategy (environmental/contextual, no character interaction yet)
 
 ### Technical Constraints
-- cloud-first architecture
-- asynchronous processing for heavy jobs
-- GPU-heavy stages must be isolated to dedicated workers
-- output must preserve visual continuity at entry and exit points
-- playback-facing preview should feel smooth and minimally abrupt
+- **MVP Storage:** local filesystem (production will use Azure Blob Storage)
+- **MVP Database:** SQLite (production migration path: PostgreSQL)
+- **GPU Inference:** off-loaded to free cloud services (Replicate, Modal) to minimize Azure spend
+- **Budget constraint:** $200 Azure credits for entire hackathon (orchestration/storage only)
+- output must preserve **smooth visual continuity** via frame interpolation (not hard cuts)
+- asynchronous job processing required for video analysis and inference
 
 ### Performance Constraints
-- scene analysis must be parallelizable
+- scene analysis must complete in <5 min for 20-min video (parallelizable)
+- ad generation via RIFE interpolation should complete in <10 min
 - rendering jobs must be resumable/retryable
-- playback-time path should not require recomputing heavy generation per viewer in MVP
-- low-latency playback integration is a future target, not an initial guarantee
+- dashboard must reflect job status with <2 second polling interval
 
 ## 8. Success Metrics
 ### Product Metrics
