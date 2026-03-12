@@ -1,795 +1,377 @@
-# Technical Specifications (MVP Implementation Details)
+# Technical Specifications
 
-## Document Purpose
-Define specific tools, libraries, APIs, and implementation details for each component. This is the "how to implement" guide for the solo Go developer.
+## 1. Purpose
+This document defines the implementation-accurate MVP behavior for the Go backend, React dashboard, SQLite data layer, local filesystem storage, and Azure-backed cloud processing used by CAFAI.
 
----
+## 2. Canonical MVP Contract
+The system must:
+- accept one 10-20 minute H.264 MP4 as the main supported MVP input
+- accept one advertised product with image or source URL plus metadata
+- create a campaign without auto-starting analysis
+- explicitly start analysis through a dedicated API call
+- propose up to the top 3 valid anchor-frame insertion slots automatically
+- let the operator select, reject, or re-pick slots
+- generate a suggested product line after slot selection
+- let the operator accept, edit, or disable that line
+- generate one 5-8 second CAFAI clip for the selected slot
+- insert that clip between the chosen source anchor frames
+- export one downloadable preview MP4
 
-## 1. Scene Detection Service
+The system must not:
+- replace source runtime instead of inserting new runtime
+- hide generation failure behind a fallback path
+- expose provider request IDs in standard API responses
 
-### Purpose
-Detect shot boundaries and segment video into scenes.
+## 3. Azure Service Choices
+The MVP names the following cloud services:
+- analysis: Azure Video Indexer + Azure OpenAI
+- CAFAI clip generation: Azure Machine Learning + Azure OpenAI
+- audio generation and alignment: Azure AI Speech
+- final render: Azure Container Apps running ffmpeg
+- temporary artifact storage: Azure Blob Storage
 
+## 4. Storage Model
+### 4.1 Canonical Rule
+Azure Blob Storage is used as temporary cloud artifact storage during generation and rendering. After rendering completes, the final preview file is copied back to local storage for MVP download, inspection, and debugging.
+
+### 4.2 Storage Roles
+- Azure Blob Storage: temporary generation and render artifacts
+- local storage: uploads, debug artifacts, and final preview download
+
+## 5. Input and Output Constraints
 ### Input
-- `video_path` (string): Local filesystem path to MP4
-- `job_id` (string): For logging + database updates
+- source video: H.264 MP4 only
+- source duration: 10-20 minutes for the full MVP path
+- product image: PNG or JPG when provided
+- product metadata: name, description, optional category, optional source URL, optional context keywords
 
 ### Output
-- List of `Scene` objects inserted into `scenes` table:
-  ```
-  scene_number: 1-N
-  start_frame: 0
-  end_frame: 300
-  duration_seconds: 12.5
-  motion_score: 0.0-1.0 (calculated later)
-  ```
+- one preview MP4 per job
+- local filesystem path intentionally exposed for MVP debugging
 
-### Implementation Details
+## 6. Local Control Plane
+### 6.1 Go API
+Responsibilities:
+- multipart upload handling
+- request validation
+- SQLite CRUD
+- explicit analysis start endpoint
+- job creation and status endpoints
+- preview download endpoint
 
-**Library:** OpenCV (C++ bindings for Go)
+### 6.2 Local Filesystem
+Stores:
+- uploaded source videos
+- uploaded product images
+- extracted anchor frames
+- downloaded cloud artifacts
+- final preview output
 
-```go
-import "gocv.io/x/gocv"
+### 6.3 SQLite
+Stores:
+- products
+- campaigns
+- jobs
+- scenes
+- slots
+- job_previews
+- job_logs
 
-func (sd *SceneDetector) DetectScenes(videoPath string) ([]*Scene, error) {
-  video, err := gocv.VideoCaptureFile(videoPath)
-  defer video.Close()
-  
-  fps := video.Get(gocv.VideoCaptureFPS)
-  totalFrames := int(video.Get(gocv.VideoCaptureFrameCount))
-  
-  // Simple boundary detection: detect cuts via histogram difference
-  // More sophisticated: use pre-trained ML model if available
-  
-  scenes := []*Scene{}
-  prevHist := gocv.NewMat()
-  sceneStart := 0
-  
-  for frameNum := 0; frameNum < totalFrames; frameNum++ {
-    mat := gocv.NewMat()
-    if !video.Read(&mat) { break }
-    
-    // Convert to HSV for robustness
-    hsv := gocv.NewMat()
-    gocv.CvtColor(mat, &hsv, gocv.ColorBGRtoHSV)
-    
-    // Compute histogram
-    hist := gocv.NewMat()
-    gocv.CalcHist([]gocv.Mat{hsv}, []int{0}, gocv.NewMat(), &hist, []int{256}, []float32{0, 256}, false)
-    
-    // Compare with previous frame
-    if frameNum > 0 {
-      diff := gocv.CompareHist(prevHist, &hist, gocv.HistCompChiSqrt)
-      if diff > SCENE_THRESHOLD {  // Detect cut
-        // End current scene
-        scenes = append(scenes, &Scene{
-          SceneNumber:    len(scenes) + 1,
-          StartFrame:     sceneStart,
-          EndFrame:       frameNum - 1,
-          DurationSeconds: float64(frameNum-sceneStart) / fps,
-        })
-        sceneStart = frameNum
-      }
-    }
-    prevHist = hist.Clone()
-    mat.Close()
-    hsv.Close()
-    hist.Close()
-  }
-  
-  return scenes, nil
-}
+### 6.4 Polling Worker
+Loop behavior:
+- poll for queued jobs awaiting analysis
+- poll for selected slots awaiting line review completion
+- poll for selected slots ready for generation
+- poll for generated slots ready for preview rendering
+- update coarse job states and granular current_stage fields
+
+There is no event bus in MVP.
+
+## 7. Lightweight Local Processing
+Local code may perform only lightweight pre-processing before cloud submission:
+- validate file type and codec with ffprobe
+- read actual source FPS
+- read source duration
+- extract anchor thumbnails for the UI
+- persist debug artifacts
+
+Frame math must always use the source video FPS. Never hardcode 24 FPS.
+
+## 8. Cloud Analysis Stage
+### 8.1 Purpose
+Analyze the full video and return enough data to:
+- propose valid insertion slots
+- let the operator inspect and choose one
+- feed the selected slot into CAFAI generation and stitching
+
+### 8.2 Required Outputs
+For each detected scene:
+- scene_number
+- start_frame
+- end_frame
+- start_seconds
+- end_seconds
+- motion_score
+- stability_score
+- dialogue_activity_score
+- longest_quiet_window_seconds
+- narrative_summary
+- context_keywords
+- action_intensity_score
+- abrupt_cut_risk
+
+For each candidate slot:
+- scene_id
+- anchor_start_frame
+- anchor_end_frame
+- quiet_window_seconds
+- score
+- reasoning
+- context_relevance_score
+- narrative_fit_score
+- anchor_continuity_score
+
+### 8.3 Hard Exclusion Rules
+Reject a candidate slot when any of the following is true:
+- normalized motion score across the candidate window is greater than `0.65`
+- either anchor boundary sub-window exceeds motion score `0.75`
+- action intensity score across the candidate window is greater than `0.70`
+- any 1-second sub-window exceeds action intensity `0.80`
+- a shot boundary is detected within `0.5` seconds of either anchor
+- cut-confidence at either anchor exceeds `0.70`
+- scene duration is less than `10` seconds
+- no quiet window of at least `3` seconds exists
+
+### 8.4 Candidate Definition
+A slot is not just a scene. A slot is a proposed anchor-frame pair inside a scene:
+- `anchor_start_frame` is the source frame immediately before insertion
+- `anchor_end_frame` is the source frame immediately after insertion
+- the generated CAFAI clip is inserted between those two frames
+
+### 8.5 Ranking Rules
+The ranking engine returns up to the top 3 valid slots automatically.
+
+Reference scoring formula:
+
+```text
+slot_score =
+  stability_score * 0.30 +
+  quiet_window_score * 0.25 +
+  context_relevance_score * 0.20 +
+  narrative_fit_score * 0.15 +
+  anchor_continuity_score * 0.10
 ```
 
-**Constants:**
-```go
-const SCENE_THRESHOLD = 50.0  // Tune based on test videos
-```
-
-### Failure Modes
-- Video codec not supported: Return error, job status → failed
-- Corrupt video: Return error
-- Out of memory for long videos: Process frame-by-frame (already done above)
-
-### Database Insert
-After detection, insert all scenes:
-```go
-for _, scene := range scenes {
-  db.InsertScene(ctx, scene)
-}
-db.UpdateJobStatus(ctx, jobID, "analyzing")  // Move to next stage
-```
-
----
-
-## 2. Context Analysis Service
-
-### Purpose
-Extract dialogue timing, motion intensity, and scene descriptions.
-
-### Output
-For each scene, populate:
-- `motion_score` (0.0-1.0): How much motion in scene
-- `stability_score` (0.0-1.0): How stable/static
-- `dialogue_present` (bool): Speech detected
-- `dialogue_gap_start_frame`, `dialogue_gap_end_frame`: Quiet moments
-- `scene_description` (string): Text summary
-
-### Implementation Details
-
-#### 2.1 Speech-to-Text (Dialogue Detection)
-
-**Tool:** Whisper (OpenAI open-source)
-
-**Go Library:**
-```go
-import "github.com/go-echarts/go-echarts/v2/opts"
-// Actually, for Whisper: use subprocess call or Python binding
-```
-
-**Implementation** (subprocess):
-```go
-import "os/exec"
-
-func (ca *ContextAnalyzer) ExtractAudio(videoPath string) (string, error) {
-  // Use ffmpeg to extract audio
-  audioPath := "/tmp/audio_temp.wav"
-  cmd := exec.Command("ffmpeg",
-    "-i", videoPath,
-    "-q:a", "9",
-    "-n",
-    audioPath,
-  )
-  err := cmd.Run()
-  return audioPath, err
-}
-
-func (ca *ContextAnalyzer) TranscribeWithWhisper(audioPath string) (*Transcript, error) {
-  // Call Whisper command-line tool
-  // whisper audio.wav --output_format json --model base
-  cmd := exec.Command("whisper",
-    audioPath,
-    "--output_format", "json",
-    "--model", "base",  // or "small" for accuracy
-    "--output_dir", "/tmp/transcripts",
-  )
-  err := cmd.Run()
-  
-  // Parse JSON output
-  jsonPath := "/tmp/transcripts/audio.json"
-  result := &Transcript{}
-  // Unmarshal JSON
-  return result, nil
-}
-
-type Transcript struct {
-  Segments []TranscriptSegment `json:"segments"`
-}
-
-type TranscriptSegment struct {
-  ID    int     `json:"id"`
-  Start float64 `json:"start"`  // seconds
-  End   float64 `json:"end"`
-  Text  string  `json:"text"`
-}
-```
-
-**Alternative:** Use Azure Cognitive Services API if Whisper setup is problematic.
-
-#### 2.2 Motion & Stability Scoring
-
-```go
-func (ca *ContextAnalyzer) AnalyzeMotion(videoPath string, scene *Scene) error {
-  video, _ := gocv.VideoCaptureFile(videoPath)
-  defer video.Close()
-  
-  fps := video.Get(gocv.VideoCaptureFPS)
-  
-  var opticalFlows []float64
-  var prevGray gocv.Mat
-  
-  for frameNum := scene.StartFrame; frameNum <= scene.EndFrame; frameNum++ {
-    video.Set(gocv.VideoCaptureFrameID, float64(frameNum))
-    frame := gocv.NewMat()
-    video.Read(&frame)
-    
-    gray := gocv.NewMat()
-    gocv.CvtColor(frame, &gray, gocv.ColorBGRtoGray)
-    
-    if frameNum > scene.StartFrame {
-      // Calculate optical flow (motion)
-      flow := gocv.NewMat()
-      gocv.CalcOpticalFlowFarneback(prevGray, gray, &flow, 0.5, 3, 15, 3, 5, 1.2, 0)
-      
-      // Average magnitude of flow vectors
-      avgMotion := calculateAverageFlow(&flow)
-      opticalFlows = append(opticalFlows, avgMotion)
-      flow.Close()
-    }
-    
-    prevGray = gray.Clone()
-    frame.Close()
-  }
-  
-  // Normalize scores 0-1
-  scene.MotionScore = normalizeScore(opticalFlows, 0.0, 30.0)
-  scene.StabilityScore = 1.0 - scene.MotionScore
-  
-  return nil
-}
-```
-
-#### 2.3 Dialogue Gap Detection
-
-Using Whisper transcript:
-```go
-func (ca *ContextAnalyzer) FindDialogueGaps(scene *Scene, transcript *Transcript) error {
-  fps := 24.0  // Standard
-  
-  // Find gaps in transcript within scene time
-  sceneStartSec := float64(scene.StartFrame) / fps
-  sceneEndSec := float64(scene.EndFrame) / fps
-  
-  sceneSegments := filterSegments(transcript.Segments, sceneStartSec, sceneEndSec)
-  
-  if len(sceneSegments) == 0 {
-    // No dialogue, entire scene is a dialogue gap
-    scene.DialoguePresent = false
-    scene.DialogueGapStartFrame = scene.StartFrame
-    scene.DialogueGapEndFrame = scene.EndFrame
-    return nil
-  }
-  
-  // Find longest gap between dialogue segments
-  maxGapStart := 0.0
-  maxGapEnd := 0.0
-  maxGapDuration := 0.0
-  
-  for i := 0; i < len(sceneSegments)-1; i++ {
-    gapStart := sceneSegments[i].End
-    gapEnd := sceneSegments[i+1].Start
-    duration := gapEnd - gapStart
-    if duration > maxGapDuration {
-      maxGapStart = gapStart
-      maxGapEnd = gapEnd
-      maxGapDuration = duration
-    }
-  }
-  
-  scene.DialoguePresent = true
-  scene.DialogueGapStartFrame = int(maxGapStart * fps)
-  scene.DialogueGapEndFrame = int(maxGapEnd * fps)
-  
-  return nil
-}
-```
-
----
-
-## 3. Ad Slot Ranking Service
-
-### Purpose
-Score candidate insertion moments and rank top 3-5.
-
-### Algorithm
-
-**Scoring Formula:**
-```
-slot_score = (
-  stability_score * 0.4 +           // High stability wins
-  (1 - motion_score) * 0.3 +        // Low motion wins
-  dialogue_gap_confidence * 0.2 +   // Dialogue gaps preferred
-  context_relevance * 0.1            // Product context match
-)
-```
-
-**Implementation:**
-```go
-func (sr *SlotRanker) RankSlots(scenes []*Scene, product *Product) ([]*Slot, error) {
-  slots := []*Slot{}
-  
-  for _, scene := range scenes {
-    score := sr.calculateSlotScore(scene, product)
-    
-    slot := &Slot{
-      ID:               generateUUID(),
-      SceneID:          scene.ID,
-      SceneNumber:      scene.SceneNumber,
-      InsertionFrame:   scene.DialogueGapStartFrame,
-      SlotType:         "dialogue_gap",
-      Confidence:       score,
-      Score:            score,
-      Reasoning:        sr.generateReasoning(scene, product, score),
-    }
-    
-    slots = append(slots, slot)
-  }
-  
-  // Sort by score descending
-  sort.Slice(slots, func(i, j int) bool {
-    return slots[i].Score > slots[j].Score
-  })
-  
-  // Rank and take top 5
-  for i, slot := range slots[:min(5, len(slots))] {
-    slot.Rank = i + 1
-  }
-  
-  return slots[:min(5, len(slots))], nil
-}
-
-func (sr *SlotRanker) generateReasoning(scene *Scene, product *Product, score float64) string {
-  reasons := []string{}
-  
-  if scene.StabilityScore > 0.7 {
-    reasons = append(reasons, "high stability")
-  }
-  if scene.MotionScore < 0.3 {
-    reasons = append(reasons, "low motion")
-  }
-  if scene.DialoguePresent && scene.DialogueGapEndFrame-scene.DialogueGapStartFrame > 150 {
-    reasons = append(reasons, "sufficient dialogue gap (>6 sec)")
-  }
-  
-  // Check if product matches scene context
-  if matchesContext(scene.Description, product.ContextKeywords) {
-    reasons = append(reasons, fmt.Sprintf("context matches %s", product.Name))
-  }
-  
-  return strings.Join(reasons, ", ")
-}
-```
-
----
-
-## 4. Ad Generation (RIFE Frame Interpolation)
-
-### Purpose
-Generate smooth 5-8 second ad segment by interpolating between start and end frames.
-
-### Tool: RIFE (Real-Time Intermediate Flow Estimation)
-
-**Provider:** Replicate API (free tier suitable for MVP)
-
-**Replicate Model:** `deforum-research/rife:latest`
-
-### Implementation
-
-```go
-import "github.com/replicate/replicate-go"
-
-func (rc *ReplicateClient) InterpolateFrames(
-  jobID string,
-  videoPath string,
-  startFrame, endFrame int,
-  multiplier int,  // How many frames to generate (e.g., 4x = multiply frames)
-) (string, error) {
-  
-  // Extract start and end frames as PNG
-  startFramePath := rc.extractFrame(videoPath, startFrame)
-  endFramePath := rc.extractFrame(videoPath, endFrame)
-  
-  // Read as base64
-  startBase64 := readFileAsBase64(startFramePath)
-  endBase64 := readFileAsBase64(endFramePath)
-  
-  // Call Replicate API
-  client := replicate.NewClient(replicate.WithToken(os.Getenv("REPLICATE_API_KEY")))
-  
-  prediction, err := client.CreatePrediction(ctx, "deforum-research/rife:latest", replicate.PredictionInput{
-    "start_frame": startBase64,
-    "end_frame":   endBase64,
-    "multiplier":  multiplier,  // 4 or 8
-  }, nil)
-  
-  if err != nil {
-    return "", err
-  }
-  
-  // Poll for completion (with timeout)
-  for i := 0; i < 120; i++ {  // 10 minutes max
-    time.Sleep(5 * time.Second)
-    prediction, _ := client.GetPrediction(ctx, prediction.ID)
-    
-    if prediction.Status == "succeeded" {
-      // Extract video from output
-      outputVideo := prediction.Output.(map[string]interface{})["video"].(string)
-      return downloadVideo(outputVideo, jobID)
-    } else if prediction.Status == "failed" {
-      return "", fmt.Errorf("RIFE failed: %v", prediction.Error)
-    }
-  }
-  
-  return "", fmt.Errorf("RIFE timeout after 10 minutes")
-}
-
-func (rc *ReplicateClient) extractFrame(videoPath string, frameNum int) string {
-  outputPath := fmt.Sprintf("/tmp/frames/frame_%d.png", frameNum)
-  
-  // ffmpeg command
-  cmd := exec.Command("ffmpeg",
-    "-i", videoPath,
-    "-vf", fmt.Sprintf("select=eq(n\\,%d)", frameNum),
-    "-vsync", "vfr",
-    outputPath,
-  )
-  cmd.Run()
-  
-  return outputPath
-}
-```
-
-**Error Handling:**
-- Replicate API timeout: Retry or fallback to simple frame copy
-- Invalid frames: Return error, slot generation fails gracefully
-
----
-
-## 5. Video Stitching (ffmpeg)
-
-### Purpose
-Insert generated ad segment seamlessly into original video.
-
-### Tool: ffmpeg (subprocess)
-
-```go
-func (vs *VideoStitcher) StitchVideo(
-  originalPath string,
-  adPath string,
-  insertionFrame int,
-  outputPath string,
-) error {
-  fps := 24.0
-  insertionSec := float64(insertionFrame) / fps
-  
-  // ffmpeg complex filter:
-  // 1. Split original: [0:v]trim=0:INSERTION_TIME[before] + trim=INSERTION_TIME:...[after]
-  // 2. Concat: [before][ad][after]concat=n=3[out]
-  
-  filterComplex := fmt.Sprintf(
-    "[0:v]trim=0:%f[before];[0:v]trim=%f[after];[before][1:v][after]concat=n=3[out]",
-    insertionSec, insertionSec,
-  )
-  
-  cmd := exec.Command("ffmpeg",
-    "-i", originalPath,
-    "-i", adPath,
-    "-filter_complex", filterComplex,
-    "-map", "[out]",
-    "-map", "0:a",
-    "-c:v", "libx264",
-    "-preset", "fast",
-    "-crf", "18",
-    "-c:a", "aac",
-    "-y",  // Overwrite
-    outputPath,
-  )
-  
-  err := cmd.Run()
-  if err != nil {
-    return fmt.Errorf("ffmpeg failed: %w", err)
-  }
-  
-  return nil
-}
-```
-
-**Fallback:** If smooth interpolation fails, use simple hard-cut with 0.5-second cross-fade.
-
----
-
-## 6. Job Orchestration (Worker Loop)
-
-### Purpose
-Async background processing of jobs.
-
-```go
-func (jp *JobProcessor) Start() {
-  for {
-    // Poll for queued jobs every 5 seconds
-    job, err := jp.db.GetNextQueuedJob(context.Background())
-    if err != nil || job == nil {
-      time.Sleep(5 * time.Second)
-      continue
-    }
-    
-    jp.processJob(job)
-  }
-}
-
-func (jp *JobProcessor) processJob(job *Job) {
-  jobID := job.ID
-  
-  // Stage 1: Scene Detection
-  jp.updateJobStatus(jobID, "analyzing", "scene_detection")
-  campaign, _ := jp.db.GetCampaign(context.Background(), job.CampaignID)
-  scenes, err := jp.sceneDetector.DetectScenes(campaign.VideoPath)
-  if err != nil {
-    jp.failJob(jobID, "Scene detection failed: "+err.Error())
-    return
-  }
-  for _, scene := range scenes {
-    jp.db.InsertScene(context.Background(), scene)
-  }
-  
-  // Stage 2: Context Analysis
-  jp.updateJobStatus(jobID, "analyzing", "context_analysis")
-  for i := range scenes {
-    jp.contextAnalyzer.AnalyzeMotion(campaign.VideoPath, &scenes[i])
-    transcript, _ := jp.contextAnalyzer.ExtractTranscript(campaign.VideoPath)
-    jp.contextAnalyzer.FindDialogueGaps(&scenes[i], transcript)
-    jp.db.UpdateScene(context.Background(), &scenes[i])
-  }
-  
-  // Stage 3: Slot Ranking
-  jp.updateJobStatus(jobID, "analyzing", "slot_ranking")
-  product, _ := jp.db.GetProduct(context.Background(), campaign.ProductID)
-  slots, err := jp.slotRanker.RankSlots(scenes, product)
-  if err != nil {
-    jp.failJob(jobID, "Slot ranking failed")
-    return
-  }
-  for _, slot := range slots {
-    slot.JobID = jobID
-    jp.db.InsertSlot(context.Background(), slot)
-  }
-  
-  // Update job: now waiting for user to select a slot
-  jp.updateJobStatus(jobID, "analyzing", "complete")
-  jp.db.UpdateJobMetadata(jobID, map[string]interface{}{
-    "top_3_slots": slots[:min(3, len(slots))],
-  })
-}
-
-func (jp *JobProcessor) updateJobStatus(jobID, status, stage string) {
-  jp.db.UpdateJobStatus(context.Background(), jobID, status)
-  jp.db.UpdateJobStage(context.Background(), jobID, stage)
-}
-
-func (jp *JobProcessor) failJob(jobID, errorMsg string) {
-  jp.db.UpdateJobStatus(context.Background(), jobID, "failed")
-  jp.db.UpdateJobError(context.Background(), jobID, errorMsg)
-}
-```
-
----
-
-## 7. Configuration & Deployment Notes
-
-### Environment Variables
-```bash
-REPLICATE_API_KEY=<key>
-UPLOAD_DIR=/tmp/uploads
-OUTPUT_DIR=/tmp/outputs
-DATABASE_PATH=ghw_cloud26.db
-LOG_LEVEL=info
-```
-
-### System Dependencies
-```
-ffmpeg (with libx264)
-OpenCV 4.5+ (with video support)
-Go 1.19+
-SQLite3
-Whisper (OpenAI CLI tool)
-```
-
-### Performance Targets
-- Scene detection: <30 seconds for 20-min video
-- Context analysis: <2 minutes
-- Slot ranking: <5 seconds
-- Ad generation (RIFE): <10 minutes (bottleneck, Replicate-limited)
-- Stitching: <3 minutes
-
-### Testing
-Use test video: Public domain film clip (10-20 min, MP4)
-- Test all services independently
-- Test async job loop
-- Load test with multiple campaigns (not required for MVP)
-
-
-
-### Input
-- slot_id
-- product_id
-- campaign config
-- source scene context
-
-### Output
-- insertion strategy
-- prompt package
-- anchor frame references
-- rendering instructions
-
-### Constraints
-- must support multiple insertion modes
-- must select fallback mode if generation risk is high
-
-### Dependencies
-- slot ranking output
-- product asset library
-- campaign rules
-
----
-
-## 5. AI Generation Worker
-### Purpose
-Generate a short scene-aware ad clip using anchor frames, product references, and prompts.
-
-### Input
-- insertion plan
-- anchor frame references
-- product assets
-- scene context payload
-
-### Output
-- generated ad clip
-- generation metadata
-- confidence / quality metrics
-
-### Constraints
-- GPU-backed execution only
-- clip duration capped by campaign and system limits
-- output must be compatible with renderer ingest requirements
-
-### Dependencies
-- generative video/image models
-- GPU runtime
-- object storage
-
-### Failure Modes
-- GPU unavailability
-- generation artifacts
-- invalid output duration/format
-
----
-
-## 6. Fallback Composer
-### Purpose
-Produce a lower-risk ad insertion clip when full generation is not viable.
-
-### Input
-- insertion plan
-- scene context
-- product assets
-
-### Output
-- composed clip
-
-### Constraints
-- should be faster and cheaper than full generation
-- should produce a render-compatible output in all normal cases
-
-### Dependencies
-- ffmpeg / compositor tooling
-- asset templates
-- optional image inpainting pipeline
-
----
-
-## 7. Frame Stitcher / Renderer
-### Purpose
-Insert the generated/composed clip into the original timeline and export playback-ready media.
-
-### Input
-- original video reference
-- insertion slot timing
-- ad clip reference
-
-### Output
-- preview output
-- final render
-
-### Constraints
-- must preserve codec/container compatibility targets
-- should avoid broken timestamps or audio/video drift
-
-### Dependencies
-- ffmpeg / media rendering pipeline
-- object storage
-- metadata database
-
-### Failure Modes
-- codec mismatch
-- corrupted intermediate clip
-- render timeout
-
----
-
-## 8. Orchestrator Service
-### Purpose
-Manage state transitions across the pipeline.
-
-### Input
-- API commands
-- stage completion events
-- stage failure events
-
-### Output
-- queued tasks
-- job state updates
-- retry decisions
-
-### Constraints
-- idempotent state handling
-- audit-friendly job lifecycle
-
-### Dependencies
-- queue/event bus
-- metadata database
-
----
-
-## 9. API Service
-### Purpose
-Expose stable interfaces to dashboard and clients.
-
-### Input
-- authenticated HTTP requests
-
-### Output
-- JSON responses
-- job and asset metadata
-
-### Constraints
-- versioned endpoints
-- strict schema validation
-- structured errors only
-
-### Dependencies
-- auth layer
-- metadata DB
-- object storage signing logic
-
----
-
-## 10. Dashboard Frontend
-### Purpose
-Provide operator-facing UI for uploads, job tracking, slot review, and result preview.
-
-### Input
-- user interactions
-- API responses
-
-### Output
-- upload requests
-- review/selection actions
-- output preview requests
-
-### Constraints
-- clear job state visibility
-- timeline visualization for candidate slots
-
-### Dependencies
-- web framework
-- player component
-- API client
-
----
-
-## 11. Shared Cross-Cutting Requirements
-### Logging
-All services must emit:
-- request/job identifiers
-- stage transitions
-- warnings
-- structured errors
-
-### Metrics
-Track:
-- stage latency
-- success/failure counts
-- queue depth
-- GPU usage
-- render completion rate
-
-### Security
-- authenticated access to control APIs
-- signed asset access
-- encrypted storage
-
-### Testing
-Each component should have:
-- unit tests
-- contract tests where applicable
-- integration tests for pipeline handoff
+Sub-score definitions:
+- `quiet_window_score`: normalized score capped once quiet window duration reaches at least 3 seconds
+- `context_relevance_score`: weighted keyword overlap between scene context tokens and product descriptor tokens, normalized by total product descriptor weight
+- `narrative_fit_score`: weighted heuristic score based on dialogue activity, tone consistency, pacing, and contextual relevance
+- `anchor_continuity_score`: weighted combination of color histogram similarity, structural similarity, and motion difference between the start and finish anchors
+
+### 8.6 Fewer-Than-Three Rule
+If analysis produces fewer than 3 valid slots:
+- return the available 1-2 valid slots
+- fail the job only if zero valid slots are found
+
+## 9. Slot Review and Re-Pick
+### 9.1 Slot Review
+The dashboard must expose returned slots with:
+- rank
+- anchor frames
+- score
+- reasoning
+- current slot status
+
+### 9.2 Re-Pick Rules
+The operator may request a re-pick only after all current proposed slots are rejected.
+
+Re-pick behavior:
+- exclude all previously rejected slot IDs
+- keep the same ranking criteria and thresholds
+- allow up to 2 re-pick attempts
+- fail the job with `error_code=NO_SUITABLE_SLOT_FOUND` after the second re-pick if no acceptable slot remains
+
+## 10. Product Line Review
+### 10.1 Suggested Line
+After slot selection, the system generates a suggested product line from product metadata and scene context.
+
+### 10.2 Product Line Modes
+- `auto`: use the system-generated line
+- `operator`: use the operator-provided edited line
+- `disabled`: generate a silent product interaction instead of spoken dialogue
+
+### 10.3 UI Behavior
+The operator may:
+- accept the generated line
+- edit the line
+- disable dialogue entirely
+
+## 11. CAFAI Generation Stage
+### 11.1 Purpose
+Generate the in-between ad moment for one selected slot.
+
+### 11.2 Canonical Generation Method
+CAFAI generates the inserted scene by conditioning a short video-generation or compositing model on the selected start and end anchor frames, the surrounding scene context, and the target product, then synthesizing a new 5-8 second bridge clip in which the character naturally interacts with the product and the clip resolves back into the original finish anchor frame.
+
+### 11.3 Required Inputs
+- source video path
+- anchor_start_frame image
+- anchor_end_frame image
+- source FPS
+- target duration, default `6` seconds and maximum `8` seconds
+- product image or source reference
+- product name
+- product description
+- product context keywords
+- scene narrative summary
+- `product_line_mode`
+- `custom_product_line` when provided
+
+### 11.4 Required CAFAI Behavior
+The inserted scene is produced by:
+- taking the chosen start anchor frame as the visual starting image
+- generating a short sequence of intermediate frames that introduce and animate the product within that scene
+- constraining the sequence to land near the chosen finish anchor frame
+- stitching that generated bridge clip back into the original video with matched audio
+
+The generated clip should:
+- begin in visual continuity with the start anchor frame
+- end in visual continuity with the finish anchor frame
+- show the product directly in the scene
+- depict the on-screen character naturally interacting with the product
+- include either a short spoken mention or silent interaction depending on `product_line_mode`
+- remain narratively plausible enough to not feel like a hard ad break
+
+### 11.5 Output
+- generated clip path or downloaded local copy
+- generated audio track or muxed clip with audio
+- generation duration
+- quality metadata if available
+
+### 11.6 Failure Policy
+There is no fallback generation path in MVP.
+
+If CAFAI generation fails:
+- slot status becomes `failed`
+- job status becomes `failed`
+- `current_stage` remains in generation-related state
+- the dashboard exposes the failure reason
+
+### 11.7 RIFE and Smoothing
+RIFE is not part of the canonical MVP generation path.
+
+It may be used optionally after generation for visual interpolation or minor temporal smoothing if boundary motion looks rough, but the MVP must not depend on it for successful output.
+
+## 12. Audio Requirements
+The MVP guarantees basic audio continuity by:
+- preserving the original soundtrack where possible
+- optionally inserting a short synthesized product mention
+- applying simple crossfade-based smoothing at clip boundaries
+
+The generated CAFAI clip may contain either:
+- a short spoken product mention
+- a silent product interaction
+
+The output does not need studio-grade audio mixing, but it must not feel obviously broken.
+
+## 13. Preview Rendering Stage
+### 13.1 Purpose
+Insert the CAFAI clip into the source video and produce one preview MP4.
+
+### 13.2 Required Rules
+- insert new duration between `anchor_start_frame` and `anchor_end_frame`
+- do not replace the surrounding source footage
+- output runtime equals source runtime plus inserted clip duration
+- preserve the finish anchor frame as the point where the source movie resumes
+- use Azure Blob Storage for temporary render artifacts
+- copy the finished preview back to local storage
+
+### 13.3 Render Failure Behavior
+If render fails after generation succeeds:
+- preserve the generated clip artifact
+- set `status=failed`
+- set `current_stage=render`
+- set `error_code=PREVIEW_RENDER_FAILED`
+- allow render retry without re-running generation
+
+### 13.4 Output
+- one preview MP4
+- one local output path
+- render metrics such as duration and insertion frame range
+
+## 14. API and State Requirements
+### 14.1 Job Status Values
+Allowed job status values:
+- `queued`
+- `analyzing`
+- `generating`
+- `stitching`
+- `completed`
+- `failed`
+
+### 14.2 Current Stage Values
+Canonical current_stage values:
+- `ready_for_analysis`
+- `analysis_submission`
+- `analysis_poll`
+- `slot_selection`
+- `line_review`
+- `generation_submission`
+- `generation_poll`
+- `render`
+- `render_submission`
+- `render_poll`
+
+### 14.3 Slot Status Values
+Allowed slot status values:
+- `proposed`
+- `selected`
+- `rejected`
+- `generating`
+- `generated`
+- `failed`
+
+## 15. Progress Reporting
+The MVP progress indicator is stage-based:
+- analysis: `40%`
+- clip generation: `40%`
+- stitching and rendering: `20%`
+
+## 16. Provider Request IDs
+Provider request IDs must be recorded in internal logs and job metadata for traceability and debugging but must not be exposed in standard API responses.
+
+## 17. Baseline Demo Test Profile
+### 17.1 Name
+`MVP_BASELINE_TEST_PROFILE`
+
+### 17.2 Purpose
+This is the recommended first engineering validation case. It is intentionally smaller than the full 10-20 minute MVP target so the pipeline can be verified before scaling up.
+
+### 17.3 Baseline Clip
+- duration: 40-60 seconds
+- scene count: 3
+- camera behavior: mostly static
+- motion: low
+- dialogue: light conversation
+- cuts: 4 or fewer
+
+### 17.4 Example Scene
+Two people sitting at a kitchen table talking.
+
+### 17.5 Example Product
+- product_name: sparkling water
+- category: beverage
+
+### 17.6 Expected Insertion
+- duration: 6 seconds
+- interaction: pick up bottle -> sip -> set down
+- dialogue: optional short line
+
+### 17.7 Expected Result
+- analysis should return 2-3 valid slots
+- one slot should be selectable without re-pick
+- generation should produce a simple interaction clip
+- render should produce a preview clip
+
+### 17.8 Demo Asset Recommendation
+`/demo/mvp_baseline_scene.mp4`

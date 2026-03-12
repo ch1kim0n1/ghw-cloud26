@@ -1,19 +1,63 @@
 # ghw-cloud26
-MLH's Global Hack Week hackathon -> Cloud themed
 
-## Info
+## Overview
+This repository contains the MVP documentation and implementation plan for a cloud-assisted contextual ad insertion system built during MLH Global Hack Week.
 
-### Event Description
-Spend a week hacking with the MLH community at Global Hack Week: Cloud Week! Global Hack Week takes place throughout the year to give you a chance to complete technical challenges, network with the community, enjoy fun live sessions, build technical projects, and make new memories.
+The product strategy is:
+- Context-Aware Fused Ad Insertion (CAFAI)
 
-Spend a week hacking with the MLH community at Global Hack Week: Cloud!
+The MVP goal is:
+- analyze a provided H.264 MP4
+- propose valid insertion slots automatically
+- let the operator choose a slot and optionally edit the generated product line
+- generate a short context-aware bridge clip
+- stitch that clip into the source video with basic audio continuity
+- export one downloadable preview MP4
 
-Global Hack Week takes place throughout the year to give you a chance to complete technical challenges, network with the community, enjoy fun live sessions, build technical projects, and make new memories.
+## MVP Summary
+The engineering-facing MVP contract is:
+- supported source videos for the main MVP path are 10-20 minute H.264 MP4 files
+- the system proposes the top 3 valid anchor-frame insertion slots when possible
+- the operator can reject slots and request up to 2 re-picks
+- CAFAI generation creates a 5-8 second bridge clip
+- final preview download is served from local storage
+- Azure Blob Storage is used only for temporary cloud artifacts during generation and rendering
+- job states are coarse: `queued -> analyzing -> generating -> stitching -> completed|failed`
 
-### Livestreams and Mini Events
-Throughout GHW, we'll have daily workshops live-streamed on our Twitch to give you the chance to pick up new skills and build something together with the community. In between workshops, we'll run mini-events in the MLH Community Discord for you to join in and meet friends as you take a break from hacking.
+## Documentation
+Core engineering docs live in [absolute-documents/01_Product_Design_Document.md](/C:/Users/Vladislav%20Kondratyev/Desktop/GitHub%20Repos/ghw-cloud26/absolute-documents/01_Product_Design_Document.md) through [absolute-documents/08_Task_Decomposition_Plan.md](/C:/Users/Vladislav%20Kondratyev/Desktop/GitHub%20Repos/ghw-cloud26/absolute-documents/08_Task_Decomposition_Plan.md).
 
-### Challenges and Points
-At GHW Cloud Week we will have plenty of challenges to keep you busy. Challenges will range from social challenges urging you to connect with other members of the community, technical challenges that will expand your coding skills, and design challenges to refine your skills as a creator and artist. Some of these challenges will be completed live on our twitch stream, so you can follow along and complete it with the community. We cannot wait to see all that you learn, build, and share.
+Recommended reading order:
+1. [01_Product_Design_Document.md](/C:/Users/Vladislav%20Kondratyev/Desktop/GitHub%20Repos/ghw-cloud26/absolute-documents/01_Product_Design_Document.md)
+2. [02_System_Architecture_Document.md](/C:/Users/Vladislav%20Kondratyev/Desktop/GitHub%20Repos/ghw-cloud26/absolute-documents/02_System_Architecture_Document.md)
+3. [03_Technical_Specifications.md](/C:/Users/Vladislav%20Kondratyev/Desktop/GitHub%20Repos/ghw-cloud26/absolute-documents/03_Technical_Specifications.md)
+4. [06_API_Contracts.md](/C:/Users/Vladislav%20Kondratyev/Desktop/GitHub%20Repos/ghw-cloud26/absolute-documents/06_API_Contracts.md)
+5. [07_Data_Schema_Definitions.md](/C:/Users/Vladislav%20Kondratyev/Desktop/GitHub%20Repos/ghw-cloud26/absolute-documents/07_Data_Schema_Definitions.md)
+6. [08_Task_Decomposition_Plan.md](/C:/Users/Vladislav%20Kondratyev/Desktop/GitHub%20Repos/ghw-cloud26/absolute-documents/08_Task_Decomposition_Plan.md)
 
-Earn experience points for yourself by completing our challenges throughout GHW. Challenges aren’t the only way to earn points. You can also receive a point each time you check in for a live session, so the more you attend, the more points you’ll rack up. They can be as simple as posting on your social media or as advanced as building a project and creating a full demo video for it. We’ll leave it to you to choose which challenges you want to take on. Feel free to work collaboratively with others on these.
+## Azure Service Choices
+The current MVP stack assumes:
+- analysis: Azure Video Indexer + Azure OpenAI
+- CAFAI generation: Azure Machine Learning + Azure OpenAI
+- audio generation and alignment: Azure AI Speech
+- final render: Azure Container Apps running ffmpeg, with Azure Blob Storage for intermediate artifacts
+
+## Artifact Flow
+```text
+generation output
+      |
+      v
+Azure Blob Storage (temporary)
+      |
+      v
+render worker pulls artifact
+      |
+      v
+final preview written to Blob
+      |
+      v
+preview copied back to local storage
+      |
+      v
+download and debugging access
+```

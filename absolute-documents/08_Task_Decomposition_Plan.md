@@ -1,539 +1,192 @@
 # Task Decomposition Plan
 
-## Document Purpose
-This document breaks the project down from a **hackathon-grade MVP** into a **production-capable, shippable product**. It is meant to guide execution, staffing, prioritization, and milestone planning.
+## 1. Rule of Execution
+Finish the MVP first. Post-MVP work starts only after the MVP is running end to end.
 
-The central rule is simple:
-- **MVP proves the concept works**
-- **Post-MVP proves the system is reliable**
-- **Production proves the system is safe, scalable, measurable, and commercially usable**
+## 2. Locked MVP Decisions
+- strategy name: CAFAI
+- input video for the full MVP path: 10-20 minute H.264 MP4
+- output: one downloadable preview MP4
+- top 3 slots are proposed automatically when possible
+- the operator can select, reject, and re-pick
+- slot targets are anchor-frame pairs inside scenes
+- product line review is part of MVP
+- output runtime increases because the CAFAI clip is inserted
+- job states stay coarse
+- no auth in MVP
+- no fallback generation path in MVP
+- local storage and SQLite are used in MVP control flow
+- Azure Blob Storage is temporary artifact storage only
+- heavy analysis, generation, audio, and rendering use Azure services
+- async processing uses a polling worker or goroutine model
 
----
+## 3. MVP Goal
+Deliver one demoable system that:
+- analyzes a source clip
+- proposes valid insertion slots
+- lets the operator choose and optionally edit the product line
+- generates one CAFAI clip for the selected slot
+- inserts that clip with basic audio continuity
+- exports a preview the user can watch and download
 
-## 1. Product Evolution Strategy
-The project should be developed in five major phases:
+## 4. Ordered MVP Build Plan
+### Phase 0: Foundation
+Deliverables:
+- repo skeleton
+- executable SQLite schema
+- local upload directories
+- backend and frontend bootstrap
+- environment configuration
+- Azure service integration placeholders
 
-1. **Phase 0 — Foundation and Scope Lock**
-2. **Phase 1 — MVP Prototype**
-3. **Phase 2 — Functional Alpha**
-4. **Phase 3 — Production Beta**
-5. **Phase 4 — Shippable Product**
+Exit criteria:
+- app starts locally
+- database initializes cleanly
+- files can be saved and read back
 
-Each phase has:
-- objective
-- deliverables
-- engineering tasks
-- validation criteria
-- exit criteria
-
----
-
-## 2. Phase 0 — Foundation and Scope Lock
-
-### Objective
-Define the exact product slice to build first so the team does not waste effort on impossible or premature features.
-
-### Deliverables
-- approved PDD
-- approved architecture doc
-- repo structure initialized
-- initial API contracts
-- cloud environment chosen
-- coding standards agreed
-
-### Core Decisions to Lock
-- primary cloud provider
-- MVP insertion strategy
-- supported input format(s)
-- supported output format(s)
-- initial ad generation path
-- initial storage, queue, and DB design
-
-### Required Tasks
-#### Product
-- finalize MVP problem statement
-- define demo workflow
-- define what “success” means for first release
-- define non-goals explicitly
-
-#### Technical
-- choose cloud stack
-- create mono-repo or poly-repo decision
-- define job lifecycle states
-- define core entities: movie, scene, slot, campaign, product, render job
-
-#### Infrastructure
-- create dev environment
-- configure storage buckets/containers
-- configure database
-- configure async task execution path
-- configure secrets management
-
-### Validation Criteria
-- all docs are internally consistent
-- no critical component is undefined
-- MVP scope fits expected timeline
-
-### Exit Criteria
-- team can start implementation without architectural ambiguity
-
----
-
-## 3. Phase 1 — MVP Prototype
-
-### Objective
-Prove that the system can analyze a video, identify strong insertion points, generate or compose one short ad segment, and produce a stitched preview output.
-
-### MVP Product Promise
-“Upload a video clip, identify top ad slots, generate one context-aware insertion, and render a before/after result.”
-
-### MVP Deliverables
-- upload workflow
-- asynchronous job orchestration
-- scene segmentation
-- slot ranking engine
-- one insertion strategy implemented
-- preview render generation
-- simple dashboard or operator UI
-
-### Recommended MVP Scope
-Keep MVP narrow:
-- start with clips instead of full-length movies if needed
-- support one product asset format
-- support one insertion mode only
-- support preview-only rendering
-- no personalization yet
-- no full streaming integration yet
-
-### MVP Workstreams
-
-#### A. Platform Foundation
+### Phase 1: Product and Campaign Ingest
 Tasks:
-- initialize repository
-- configure backend service
-- configure frontend shell
-- set up database migrations
-- set up object storage integration
-- set up job queue
-- set up environment configs
+- implement `POST /api/products`
+- implement `GET /api/products`
+- implement `POST /api/campaigns`
+- validate video codec and duration
+- support inline product creation during campaign setup
+- ensure campaign creation leaves the job in `ready_for_analysis`
 
-Outputs:
-- running local/dev system
-- health check endpoints
-- basic admin UI
+Exit criteria:
+- a product can be created
+- a campaign can be created
+- a queued job is written to the database without auto-starting analysis
 
-#### B. Asset Ingestion
+### Phase 2: Analysis and Slot Proposal
 Tasks:
-- implement content upload endpoint
-- implement product asset upload endpoint
-- persist file metadata
-- validate video and image types
-- generate processing job records
+- implement `POST /api/jobs/{job_id}/start-analysis`
+- add polling worker
+- submit video to Azure Video Indexer and Azure OpenAI
+- persist scenes
+- persist proposed slots
+- expose slots in the dashboard
+- implement reject and re-pick flow
+- enforce exclusion thresholds
 
-Outputs:
-- uploaded media stored successfully
-- jobs created and tracked
+Exit criteria:
+- one video produces valid proposed slots when they exist
+- fewer-than-3-slot cases return available valid slots
+- rejected slots are excluded on re-pick
 
-#### C. Scene Segmentation
+### Phase 3: Product Line Review and CAFAI Generation
 Tasks:
-- decode video
-- extract frames/keyframes
-- detect shot boundaries
-- group shots into scenes
-- store scene boundaries in DB
+- implement slot selection endpoint
+- generate suggested product line
+- implement product line review UI
+- implement generation request with `product_line_mode`
+- submit generation request to Azure Machine Learning and Azure OpenAI
+- store generated clip metadata
+- expose generation progress and failure state
 
-Outputs:
-- scene list with timestamps
-- confidence metadata
+Exit criteria:
+- selecting a slot prepares a suggested line
+- the operator can accept, edit, or disable the line
+- generation success updates slot state
+- generation failure fails the job clearly
 
-#### D. Context Extraction
+### Phase 4: Preview Rendering
 Tasks:
-- extract transcript/subtitles if available
-- compute motion/stability metrics
-- compute audio silence windows
-- compute narrative sensitivity heuristics
-- attach scene summaries
+- submit preview render request
+- push generation artifact to Azure Blob Storage
+- run render in Azure Container Apps using ffmpeg
+- apply Azure AI Speech output or simple crossfade smoothing
+- copy final preview back to local storage
+- store one preview output
+- expose preview status and download route
 
-Outputs:
-- scene-level analysis metadata
-- feature vectors for ranking
+Exit criteria:
+- a completed job has one playable preview MP4
+- preview download works from the dashboard
+- render-failure path preserves generated artifacts for retry
 
-#### E. Slot Ranking Engine
+### Phase 5: Demo Hardening
 Tasks:
-- define slot scoring formula
-- rank candidate insertion points
-- select top 3 candidate slots
-- generate slot explanation metadata
-
-Outputs:
-- ranked candidate list
-- reasons for each top slot
-
-#### F. Ad Planning + Insertion Strategy
-Tasks:
-- choose one MVP insertion strategy:
-  - stylized bridge clip, or
-  - environmental placement, or
-  - simple composited branded insert
-- prepare generation/composition inputs
-- enforce duration constraints
-
-Outputs:
-- insertion plan per selected slot
-
-#### G. Generation / Composition Pipeline
-Tasks:
-- call generation/composition service
-- produce ad clip
-- implement fallback if generation fails
-- persist result metadata
-
-Outputs:
-- generated or composed ad segment
-
-#### H. Stitching and Rendering
-Tasks:
-- splice generated clip into timeline
-- smooth transitions
-- render preview output
-- export preview URL
-
-Outputs:
-- before/after preview
-
-#### I. Basic Dashboard
-Tasks:
-- show uploads
-- show job progress
-- show top slots
-- show preview player
-- show status and errors
-
-Outputs:
-- minimal operator workflow
-
-### MVP Validation Criteria
-- one input video completes full pipeline
-- top 3 candidate slots are generated
-- at least one insertion renders successfully
-- preview can be demonstrated live
-- reasoning for slot choice is visible
-
-### MVP Exit Criteria
-- system successfully demonstrates end-to-end value
-- demo makes cloud usage obvious
-- core architecture is reusable for next phase
-
----
-
-## 4. Phase 2 — Functional Alpha
-
-### Objective
-Convert the MVP from a fragile demo into a system that works repeatedly across more inputs, more assets, and more edge cases.
-
-### New Capabilities
-- support longer videos
-- improve slot ranking quality
-- improve insertion quality
-- improve retry and failure handling
-- improve observability
-
-### Deliverables
-- more robust processing pipeline
-- improved dashboard
-- better metadata tracking
-- structured error handling
-- deterministic fallbacks
-- benchmark suite
-
-### Workstreams
-
-#### A. Reliability Hardening
-Tasks:
-- add retry policies
-- add dead-letter handling
-- add idempotent job processing
-- add job timeout handling
-- add resumable stages
-
-#### B. Better Ranking Logic
-Tasks:
-- refine heuristics for narrative safety
-- penalize intense or high-motion segments
-- add product-scene compatibility logic
-- add calibration datasets
-- compare scoring models
-
-#### C. Better Rendering Quality
-Tasks:
-- improve transition smoothing
-- add frame interpolation where needed
-- add audio blending rules
-- improve anchor frame matching
-
-#### D. Better Operator Tooling
-Tasks:
-- allow manual slot override
-- allow campaign rule editing
-- allow regeneration on chosen slot
-- display intermediate artifacts for debugging
-
-#### E. Internal Evaluation Framework
-Tasks:
-- create qualitative review checklist
-- define slot quality scoring rubric
-- define ad realism scoring rubric
-- define transition smoothness scoring rubric
-
-### Alpha Validation Criteria
-- system works repeatedly on multiple clips
-- failed jobs are visible and debuggable
-- operator can inspect and retry runs
-- ad placement quality improves over MVP baseline
-
-### Exit Criteria
-- system is no longer a one-off demo
-- system can be run consistently by internal users
-
----
-
-## 5. Phase 3 — Production Beta
-
-### Objective
-Prepare the system for external pilot use with basic scale, security, monitoring, and operational controls.
-
-### Deliverables
-- authentication and access control
-- tenant/project boundaries
-- resource quotas
-- audit logs
-- observability stack
-- scalable worker infrastructure
-- cost monitoring
-
-### Workstreams
-
-#### A. Security and Access Control
-Tasks:
-- add auth
-- add RBAC roles
-- secure asset access
-- secure signed URLs
-- add audit logging
-
-#### B. Multi-Job / Multi-Tenant Support
-Tasks:
-- isolate data by account/project
-- add quotas and usage limits
-- add campaign ownership models
-- add billing-related usage counters
-
-#### C. Observability
-Tasks:
-- centralize logs
-- add metrics
-- add distributed tracing
-- track stage-level latency
-- track failure reasons by component
-
-#### D. Scalability
-Tasks:
-- autoscale workers
-- separate CPU and GPU queues
-- add queue backpressure handling
-- optimize storage lifecycle
-- optimize render pipeline throughput
-
-#### E. Compliance and Governance Foundations
-Tasks:
-- define media retention policy
-- add deletion workflows
-- add asset provenance tracking
-- add configuration version history
-
-### Beta Validation Criteria
-- multiple concurrent jobs can run safely
-- resource usage is measurable
-- failures are observable
-- user/project boundaries are enforced
-- preview outputs remain stable under load
-
-### Exit Criteria
-- system can support pilot customers or controlled external users
-
----
-
-## 6. Phase 4 — Shippable Product
-
-### Objective
-Turn the beta system into a commercially viable, supportable product with strong reliability, quality, and operational maturity.
-
-### Product-Level Requirements
-- stable API and versioning
-- customer-facing dashboard
-- measurable SLA/SLO targets
-- production support workflows
-- usage analytics
-- cost controls
-- release management
-
-### Deliverables
-- production deployment environment
-- CI/CD pipelines
-- formal release process
-- user-facing documentation
-- admin tooling
-- analytics and reporting
-
-### Workstreams
-
-#### A. Productization
-Tasks:
-- finalize onboarding flow
-- finalize dashboard UX
-- add campaign creation workflow
-- add render history and asset browser
-- add project-level settings
-
-#### B. Quality Assurance
-Tasks:
-- add unit/integration/end-to-end tests
-- add render regression tests
-- add API contract tests
-- add dataset-based ranking validation
-- add load testing
-
-#### C. Deployment and Release Engineering
-Tasks:
-- implement CI/CD
-- add environment promotion flow
-- add rollback strategy
-- add config management per environment
-- add feature flags
-
-#### D. Cost and Performance Optimization
-Tasks:
-- reduce unnecessary recomputation
-- cache intermediate outputs
-- optimize frame extraction
-- optimize GPU job scheduling
-- optimize storage and transcode cost
-
-#### E. Customer and Operational Support
-Tasks:
-- add support dashboards
-- add admin diagnostics
-- add job replay tools
-- add incident response playbooks
-- add usage reports and billing hooks
-
-### Shippable Product Validation Criteria
-- system can serve real users reliably
-- system has monitoring, security, testing, and rollback support
-- outputs are high enough quality for external evaluation or paid pilot
-- product workflows are understandable without developer intervention
-
-### Exit Criteria
-- the platform is supportable as a real product, not just a research demo
-
----
-
-## 7. Long-Term Expansion Tracks
-Once the shippable product exists, expansion can branch into specialized tracks.
-
-### A. Personalization Track
-- product variations by viewer segment
-- region-based placement differences
-- campaign experimentation and A/B testing
-- ad effectiveness measurement
-
-### B. Insertion Quality Track
-- more advanced environment-aware placement
-- better motion consistency
-- stronger photorealism
-- advanced character-object interaction
-
-### C. Platform Integration Track
-- streaming platform SDK/API integration
-- post-production workflow integrations
-- partner-facing APIs
-- enterprise account controls
-
-### D. Optimization Track
-- reinforcement or ranking models for slot quality
-- automated campaign strategy tuning
-- budget-aware generation planning
-- quality-cost balancing system
-
----
-
-## 8. Priority Ordering Across the Entire Roadmap
-The correct order is not “build everything.”
-The correct order is:
-
-1. prove end-to-end flow
-2. stabilize the flow
-3. instrument the flow
-4. secure the flow
-5. scale the flow
-6. optimize quality and economics
-
-If this order is broken, the team will waste time polishing components that are not yet product-valid.
-
----
-
-## 9. Cross-Phase Core Backlog
-These areas should exist as persistent backlogs across every phase.
-
-### A. Technical Debt Backlog
-- refactor brittle services
-- simplify worker contracts
-- reduce duplicated media logic
-- improve dev ergonomics
-
-### B. Quality Backlog
-- improve slot relevance
-- improve continuity realism
-- reduce rendering artifacts
-- reduce failed generation rate
-
-### C. Product Backlog
-- better operator controls
-- better campaign tools
-- better explainability for slot choices
-- better preview UX
-
-### D. Infrastructure Backlog
-- cost controls
-- autoscaling rules
-- queue performance
-- observability coverage
-
----
-
-## 10. Milestone Summary
-
-| Milestone | Goal | Outcome |
-|---|---|---|
-| M0 | Scope lock | Clear product + architecture |
-| M1 | MVP demo | End-to-end proof of concept |
-| M2 | Functional alpha | Repeatable internal workflow |
-| M3 | Production beta | Controlled external pilot readiness |
-| M4 | Shippable product | Commercially supportable platform |
-
----
-
-## 11. Suggested Execution Mindset
-The project should be managed by this rule set:
-
-- build the narrowest version that proves the thesis
-- separate “wow factor” from “must work” paths
-- keep generation optional behind fallback composition paths
-- preserve intermediate artifacts for debugging
-- treat slot ranking quality as a first-class differentiator
-- do not chase photorealistic perfection before pipeline reliability
-
-The strongest version of this product is not merely “AI ads in movies.”
-It is:
-
-**a cloud-native contextual ad insertion platform that identifies low-disruption moments in long-form video and produces scene-aware monetization opportunities with measurable quality, control, and scalability.**
+- improve logs and job visibility
+- verify progress reporting weights
+- test success and failure paths
+- validate the baseline demo profile
+- prepare one reliable main demo clip and product
+
+Exit criteria:
+- end-to-end demo is repeatable
+- the seamlessness story and Azure compute story are both understandable
+
+## 5. Baseline Validation Profile
+### Name
+`MVP_BASELINE_TEST_PROFILE`
+
+### Purpose
+Use this smaller test case first to validate the implementation before moving to the full 10-20 minute MVP target.
+
+### Baseline Video
+- duration: 40-60 seconds
+- scene count: 3
+- camera: static
+- motion: low
+- dialogue: light conversation
+- cuts: 4 or fewer
+
+### Example Scene
+Two people sitting at a kitchen table talking.
+
+### Example Product
+- product_name: sparkling water
+- category: beverage
+
+### Expected Insertion
+- duration: 6 seconds
+- interaction: pick up bottle -> sip -> set down
+- dialogue: optional short line
+
+### Expected Pipeline Result
+- analysis returns 2-3 valid slots
+- one slot is chosen
+- generation creates a simple interaction
+- render produces a preview clip
+
+### Demo Asset Recommendation
+`/demo/mvp_baseline_scene.mp4`
+
+## 6. MVP Acceptance Checklist
+- product creation works
+- campaign creation works
+- explicit analysis start works
+- analysis returns valid proposed slots
+- reject and re-pick works
+- product line review works
+- one selected slot generates a CAFAI clip
+- preview render completes
+- final preview is downloadable
+- the result demonstrates seamless insertion better than a hard cut
+
+## 7. Explicitly Deferred Until After MVP
+- fallback composition path
+- production auth and access control
+- multi-tenant support
+- permanent cloud object storage migration
+- PostgreSQL migration
+- queue and event bus architecture
+- advanced photorealism work
+- streaming platform integrations
+- billing, quotas, and analytics
+
+## 8. Post-MVP Backlog
+Only after MVP completion:
+- add fallback generation or composition
+- improve narrative-fit scoring
+- improve audio realism
+- improve character-product interaction quality
+- migrate storage and database to production services
+- add auth, RBAC, and operational controls
+
+## 9. Demo Success Definition
+The hackathon demo is successful if viewers can clearly understand:
+- the system found the insertion moment automatically
+- the inserted clip feels like it belongs inside the scene
+- the Azure-backed cloud pipeline is doing the heavy lifting that makes the result possible
