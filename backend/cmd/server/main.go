@@ -47,15 +47,37 @@ func main() {
 		os.Exit(1)
 	}
 
+	analysisClient, openAIClient, err := services.NewPhaseTwoClients(cfg, logger)
+	if err != nil {
+		logger.Error("configure phase 2 Azure clients", "error", err)
+		os.Exit(1)
+	}
+	jobService := services.NewJobService(
+		sqliteDB,
+		db.NewJobsRepository(sqliteDB),
+		db.NewCampaignsRepository(sqliteDB),
+		db.NewProductsRepository(sqliteDB),
+		db.NewJobLogsRepository(sqliteDB),
+		db.NewScenesRepository(sqliteDB),
+		db.NewSlotsRepository(sqliteDB),
+		analysisClient,
+		openAIClient,
+	)
+
 	processor := worker.NewProcessor(logger, cfg.WorkerInterval)
+	processor.SetOnTick(func(tickCtx context.Context) {
+		if err := jobService.ProcessPendingAnalysis(tickCtx); err != nil {
+			logger.Error("process pending analysis", "error", err)
+		}
+	})
 	go processor.Run(ctx)
 
 	handler := api.NewRouter(api.Dependencies{
 		Config:         cfg,
 		Logger:         logger,
 		DB:             sqliteDB,
-		AnalysisClient: services.NewNoopAnalysisClient(logger),
-		OpenAIClient:   services.NewNoopOpenAIClient(logger),
+		AnalysisClient: analysisClient,
+		OpenAIClient:   openAIClient,
 		MLClient:       services.NewNoopMLClient(logger),
 		SpeechClient:   services.NewNoopSpeechClient(logger),
 		BlobClient:     services.NewNoopBlobStorageClient(logger),

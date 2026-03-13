@@ -2,7 +2,6 @@ import { Link, Navigate, Route, Routes } from "react-router-dom";
 import { HealthStatusPanel } from "./components/HealthStatusPanel";
 import { CreateCampaignPage } from "./pages/CreateCampaignPage";
 import { JobPage } from "./pages/JobPage";
-import { PreviewPage } from "./pages/PreviewPage";
 import { ProductsPage } from "./pages/ProductsPage";
 
 function App() {
@@ -10,12 +9,12 @@ function App() {
     <div className="app-shell">
       <header className="hero">
         <div>
-          <p className="eyebrow">CAFAI phase 1</p>
+          <p className="eyebrow">CAFAI phase 2</p>
           <h1>Cloud-assisted ad insertion dashboard</h1>
           <p className="hero-copy">
-            Product ingest and campaign intake are live. Analysis, slot review,
-            generation, and preview rendering remain scaffolded for the next
-            phases.
+            Product ingest, campaign intake, explicit analysis start, worker
+            polling, and slot review are live. Real Phase 2 analysis requires
+            Azure Video Indexer and Azure OpenAI configuration.
           </p>
         </div>
         <HealthStatusPanel />
@@ -25,7 +24,6 @@ function App() {
         <Link to="/products">Products</Link>
         <Link to="/campaigns/new">Create Campaign</Link>
         <Link to="/jobs/demo-job">Job</Link>
-        <Link to="/preview/demo-job">Preview</Link>
       </nav>
 
       <main>
@@ -34,7 +32,6 @@ function App() {
           <Route path="/products" element={<ProductsPage />} />
           <Route path="/campaigns/new" element={<CreateCampaignPage />} />
           <Route path="/jobs/:jobId" element={<JobPage />} />
-          <Route path="/preview/:jobId" element={<PreviewPage />} />
         </Routes>
       </main>
     </div>

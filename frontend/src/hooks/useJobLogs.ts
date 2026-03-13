@@ -1,15 +1,15 @@
 import { useEffect, useState } from "react";
 import { ApiError } from "../types/Api";
-import type { Slot } from "../types/Slot";
-import { listSlots } from "../services/slotsApi";
+import type { JobLog } from "../types/Job";
+import { getJobLogs } from "../services/jobsApi";
 
-interface UseSlotsOptions {
+interface UseJobLogsOptions {
   poll?: boolean;
   pollIntervalMs?: number;
 }
 
-export function useSlots(jobId?: string, options: UseSlotsOptions = {}) {
-  const [slots, setSlots] = useState<Slot[]>([]);
+export function useJobLogs(jobId?: string, options: UseJobLogsOptions = {}) {
+  const [logs, setLogs] = useState<JobLog[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -26,29 +26,29 @@ export function useSlots(jobId?: string, options: UseSlotsOptions = {}) {
         setLoading(true);
       }
 
-      return listSlots(jobId)
-      .then((response) => {
-        if (cancelled) {
-          return;
-        }
-        setSlots(response.slots ?? []);
-        setError(null);
-      })
-      .catch((reason: unknown) => {
-        if (cancelled) {
-          return;
-        }
-        if (reason instanceof ApiError) {
-          setError(reason.message);
-          return;
-        }
-        setError("Unable to load slots.");
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      });
+      return getJobLogs(jobId)
+        .then((response) => {
+          if (cancelled) {
+            return;
+          }
+          setLogs(response.logs ?? []);
+          setError(null);
+        })
+        .catch((reason: unknown) => {
+          if (cancelled) {
+            return;
+          }
+          if (reason instanceof ApiError) {
+            setError(reason.message);
+            return;
+          }
+          setError("Unable to load job logs.");
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setLoading(false);
+          }
+        });
     };
 
     void load(true);
@@ -69,7 +69,7 @@ export function useSlots(jobId?: string, options: UseSlotsOptions = {}) {
   }, [jobId, options.poll, options.pollIntervalMs, refreshKey]);
 
   return {
-    slots,
+    logs,
     error,
     loading,
     refresh: () => setRefreshKey((value) => value + 1),

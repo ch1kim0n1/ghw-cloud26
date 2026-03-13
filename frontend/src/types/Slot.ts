@@ -1,5 +1,6 @@
 export interface Slot {
   id: string;
+  job_id?: string;
   rank: number;
   scene_id: string;
   anchor_start_frame: number;
@@ -13,5 +14,10 @@ export interface Slot {
   final_product_line?: string | null;
   product_line_mode?: string | null;
   generated_clip_path?: string | null;
+  generated_audio_path?: string | null;
   generation_error?: string | null;
+  context_relevance_score?: number | null;
+  narrative_fit_score?: number | null;
+  anchor_continuity_score?: number | null;
+  metadata?: Record<string, unknown>;
 }

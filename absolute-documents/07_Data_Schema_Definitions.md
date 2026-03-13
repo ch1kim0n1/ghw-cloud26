@@ -92,6 +92,7 @@ CREATE TABLE scenes (
   action_intensity_score REAL,
   abrupt_cut_risk REAL,
   created_at TEXT NOT NULL,
+  metadata_json TEXT,
   FOREIGN KEY (job_id) REFERENCES jobs(id)
 );
 ```
@@ -247,6 +248,16 @@ Human-readable operational audit trail for the dashboard and debugging.
   "context_relevance_score": 0.81,
   "narrative_fit_score": 0.79,
   "anchor_continuity_score": 0.88
+}
+```
+
+### scenes.metadata_json
+
+```json
+{
+  "provider": "azure_video_indexer",
+  "provider_scene": "12",
+  "transcript_size": 4
 }
 ```
 

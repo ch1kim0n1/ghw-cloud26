@@ -16,5 +16,6 @@ type Scene struct {
 	ContextKeywords           []string `json:"context_keywords,omitempty"`
 	ActionIntensityScore      *float64 `json:"action_intensity_score"`
 	AbruptCutRisk             *float64 `json:"abrupt_cut_risk"`
+	Metadata                  Metadata `json:"metadata,omitempty"`
 	CreatedAt                 string   `json:"created_at"`
 }

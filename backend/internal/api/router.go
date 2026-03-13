@@ -37,9 +37,9 @@ func NewRouter(deps Dependencies) http.Handler {
 func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 	products := newProductsHandler(deps)
 	campaigns := newCampaignsHandler(deps)
-	jobs := newJobsHandler()
-	analysis := newAnalysisHandler()
-	slots := newSlotsHandler()
+	jobs := newJobsHandler(deps)
+	analysis := newAnalysisHandler(deps)
+	slots := newSlotsHandler(deps)
 	preview := newPreviewHandler()
 
 	mux.HandleFunc("POST /api/products", products)

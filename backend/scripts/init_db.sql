@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS scenes (
   action_intensity_score REAL,
   abrupt_cut_risk REAL,
   created_at TEXT NOT NULL,
+  metadata_json TEXT,
   FOREIGN KEY (job_id) REFERENCES jobs(id)
 );
 

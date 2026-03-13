@@ -32,6 +32,20 @@ The engineering-facing MVP contract is:
 - Azure Blob Storage is used only for temporary cloud artifacts during generation and rendering
 - job states are coarse: `queued -> analyzing -> generating -> stitching -> completed|failed`
 
+## Current State
+Implemented now:
+- Phase 0: foundation and runtime bootstrap
+- Phase 1: product and campaign ingest
+- Phase 2: explicit analysis start, worker polling, scene persistence, slot review, reject, and re-pick
+
+Runtime requirements:
+- Phase 2 is part of the shipped app and requires Azure Video Indexer plus Azure OpenAI configuration before the backend will start
+- local SQLite, uploads, and runtime directories remain part of the MVP control plane
+
+Intentionally deferred:
+- Phase 3: slot selection, product-line review, and CAFAI generation
+- Phase 4: preview rendering and download
+
 ## Documentation
 Core engineering docs live in [absolute-documents/01_Product_Design_Document.md](/C:/Users/Vladislav%20Kondratyev/Desktop/GitHub%20Repos/ghw-cloud26/absolute-documents/01_Product_Design_Document.md) through [absolute-documents/08_Task_Decomposition_Plan.md](/C:/Users/Vladislav%20Kondratyev/Desktop/GitHub%20Repos/ghw-cloud26/absolute-documents/08_Task_Decomposition_Plan.md).
 
@@ -93,9 +107,10 @@ Important paths:
 ## API Surface
 The documented MVP API base path is `/api`, with snake_case JSON and no auth in MVP.
 
-Current Phase 0 behavior:
+Current implementation status:
 - `GET /api/health` is live
-- the rest of the documented MVP routes are registered as placeholders and return `501 NOT_IMPLEMENTED`
+- products, campaigns, jobs, analysis start, slot list/detail, slot reject, and slot re-pick are implemented
+- slot select, slot generate, and preview routes remain intentionally unimplemented until phases 3 and 4
 
 Planned MVP route groups from the docs:
 - products: `POST /api/products`, `GET /api/products`
@@ -169,10 +184,27 @@ preview copied back to local storage
 download and debugging access
 ```
 
-## Phase 0 Status
+## Phase Status
 Phase 0 foundation is implemented with:
 - a runnable Go backend on `net/http`
 - executable SQLite migrations and auto-created runtime directories
-- Azure placeholder clients and a worker stub
-- a React + TypeScript dashboard shell with routed placeholder pages
+- Azure-backed Phase 2 client wiring and a polling worker
+- a React + TypeScript dashboard for the live Phase 0-2 workflow
 - a live health check at `/api/health`
+
+Phase 1 is implemented with:
+- reusable product creation and listing
+- campaign creation with source video validation
+- inline product creation during campaign intake
+- jobs created in `queued` and `ready_for_analysis`
+
+Phase 2 is implemented with:
+- explicit analysis start
+- worker-driven analysis submission and polling
+- scene persistence, slot persistence, and slot ranking
+- dashboard slot review, rejection, and re-pick
+- provider request IDs recorded internally and hidden from standard API responses
+
+Phases 3 and 4 are intentionally deferred:
+- slot selection, product-line review, and generation
+- preview rendering, preview status, and preview download

@@ -37,6 +37,10 @@ func InvalidRequest(code, message string, details map[string]any) *AppError {
 	return NewAppError(http.StatusBadRequest, code, message, details, nil)
 }
 
+func Conflict(code, message string, details map[string]any) *AppError {
+	return NewAppError(http.StatusConflict, code, message, details, nil)
+}
+
 func ResourceNotFound(message string, details map[string]any, err error) *AppError {
 	return NewAppError(http.StatusNotFound, "RESOURCE_NOT_FOUND", message, details, err)
 }

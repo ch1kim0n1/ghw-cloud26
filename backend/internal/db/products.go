@@ -102,7 +102,7 @@ func (r *ProductsRepository) List(ctx context.Context) ([]models.Product, error)
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, name, description, category, context_keywords_json, source_url, image_path, created_at, updated_at
 		FROM products
-		ORDER BY datetime(created_at) DESC, id DESC
+		ORDER BY created_at DESC, id DESC
 	`)
 	if err != nil {
 		return nil, fmt.Errorf("list products: %w", err)

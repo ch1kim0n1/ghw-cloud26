@@ -141,6 +141,52 @@
   padding-top: 1rem;
 }
 
+.job-metadata {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  margin: 1rem 0 0;
+}
+
+.job-metadata dt {
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #5b6e7e;
+}
+
+.job-metadata dd {
+  margin: 0.3rem 0 0;
+  font-weight: 600;
+}
+
+.log-list {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.log-item {
+  padding: 0.85rem 1rem;
+  border-radius: 1rem;
+  background: rgba(17, 33, 50, 0.04);
+}
+
+.log-item span {
+  display: inline-block;
+  margin-left: 0.5rem;
+  color: #5b6e7e;
+  font-size: 0.9rem;
+}
+
+.log-item p {
+  margin: 0.45rem 0 0;
+}
+
+.slot-card p {
+  margin-bottom: 0;
+}
+
 @media (max-width: 800px) {
   .field-row {
     grid-template-columns: 1fr;

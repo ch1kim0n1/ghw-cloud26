@@ -1,6 +1,10 @@
 package services
 
-import "context"
+import (
+	"context"
+
+	"github.com/ch1kim0n1/ghw-cloud26/backend/internal/models"
+)
 
 type AnalysisRequest struct {
 	JobID      string
@@ -13,14 +17,34 @@ type AnalysisResponse struct {
 	RequestID string
 }
 
+type AnalysisPollRequest struct {
+	JobID      string
+	RequestID  string
+	VideoPath  string
+	ProductID  string
+	CampaignID string
+	SourceFPS  float64
+}
+
+type AnalysisPollResponse struct {
+	RequestID  string
+	Status     string
+	Scenes     []models.Scene
+	PayloadRef string
+	Message    string
+}
+
 type OpenAIRequest struct {
-	JobID   string
-	Prompt  string
-	Purpose string
+	JobID        string
+	Purpose      string
+	SystemPrompt string
+	Prompt       string
+	Temperature  float64
 }
 
 type OpenAIResponse struct {
 	RequestID string
+	Content   string
 }
 
 type GenerationRequest struct {
@@ -62,6 +86,7 @@ type RenderResponse struct {
 
 type AnalysisClient interface {
 	SubmitAnalysis(context.Context, AnalysisRequest) (AnalysisResponse, error)
+	PollAnalysis(context.Context, AnalysisPollRequest) (AnalysisPollResponse, error)
 }
 
 type OpenAIClient interface {

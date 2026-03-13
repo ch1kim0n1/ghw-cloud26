@@ -33,6 +33,7 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByText("healthy")).toBeInTheDocument();
     });
+    expect(screen.queryByRole("link", { name: "Preview" })).not.toBeInTheDocument();
   });
 
   it("renders the campaign page route", () => {
@@ -52,17 +53,17 @@ describe("App", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText(/Job placeholder test-job/)).toBeInTheDocument();
+    expect(screen.getByText(/Job dashboard test-job/)).toBeInTheDocument();
   });
 
-  it("renders the preview page route", () => {
+  it("does not expose a preview route in the phase 0-2 dashboard", () => {
     render(
       <MemoryRouter initialEntries={["/preview/test-job"]}>
         <App />
       </MemoryRouter>,
     );
 
-    expect(screen.getByText(/Preview scaffold test-job/)).toBeInTheDocument();
+    expect(screen.queryByText(/Preview scaffold test-job/)).not.toBeInTheDocument();
   });
 
   it("shows an error state when health fails", async () => {

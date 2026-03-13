@@ -11,7 +11,7 @@ type Processor struct {
 	logger   *slog.Logger
 	interval time.Duration
 	ticks    atomic.Int64
-	onTick   func()
+	onTick   func(context.Context)
 }
 
 func NewProcessor(logger *slog.Logger, interval time.Duration) *Processor {
@@ -35,13 +35,13 @@ func (p *Processor) Run(ctx context.Context) {
 			p.ticks.Add(1)
 			p.logger.Info("worker stub tick")
 			if p.onTick != nil {
-				p.onTick()
+				p.onTick(ctx)
 			}
 		}
 	}
 }
 
-func (p *Processor) SetOnTick(fn func()) {
+func (p *Processor) SetOnTick(fn func(context.Context)) {
 	p.onTick = fn
 }
 
