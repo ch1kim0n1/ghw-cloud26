@@ -27,7 +27,7 @@ func main() {
 	}
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	logger.Info("starting server", "addr", cfg.ServerAddr, "repo_root", cfg.RepoRoot)
+	logger.Info("starting server", "addr", cfg.ServerAddr, "repo_root", cfg.RepoRoot, "provider_profile", cfg.ProviderProfile)
 
 	pathService := services.NewPathService(cfg)
 	if err := pathService.EnsureRuntimeDirectories(); err != nil {
@@ -53,17 +53,17 @@ func main() {
 
 	analysisClient, openAIClient, err := services.NewPhaseTwoClients(cfg, logger)
 	if err != nil {
-		logger.Error("configure phase 2 Azure clients", "error", err)
+		logger.Error("configure phase 2 provider clients", "error", err, "provider_profile", cfg.ProviderProfile)
 		os.Exit(1)
 	}
 	mlClient, err := services.NewPhaseThreeClient(cfg, logger)
 	if err != nil {
-		logger.Error("configure phase 3 Azure clients", "error", err)
+		logger.Error("configure phase 3 provider clients", "error", err, "provider_profile", cfg.ProviderProfile)
 		os.Exit(1)
 	}
 	blobClient, renderClient, err := services.NewPhaseFourClients(cfg, logger)
 	if err != nil {
-		logger.Error("configure phase 4 Azure clients", "error", err)
+		logger.Error("configure phase 4 provider clients", "error", err, "provider_profile", cfg.ProviderProfile)
 		os.Exit(1)
 	}
 	jobService := services.NewJobService(

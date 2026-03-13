@@ -12,6 +12,7 @@ const version = "0.1.0-mvp"
 
 type Config struct {
 	RepoRoot                     string
+	ProviderProfile              string
 	ServerAddr                   string
 	DatabasePath                 string
 	MigrationsDir                string
@@ -38,6 +39,19 @@ type Config struct {
 	AzureBlobSASToken            string
 	AzureRenderURL               string
 	AzureRenderAPIKey            string
+	VultrAnalysisURL             string
+	VultrAnalysisAPIKey          string
+	VultrLLMURL                  string
+	VultrLLMAPIKey               string
+	VultrGenerationURL           string
+	VultrGenerationAPIKey        string
+	VultrObjectStorageEndpoint   string
+	VultrObjectStorageRegion     string
+	VultrObjectStorageBucket     string
+	VultrObjectStorageAccessKey  string
+	VultrObjectStorageSecretKey  string
+	VultrRenderURL               string
+	VultrRenderAPIKey            string
 }
 
 func Load() (Config, error) {
@@ -48,6 +62,7 @@ func Load() (Config, error) {
 
 	return Config{
 		RepoRoot:                     repoRoot,
+		ProviderProfile:              normalizeProviderProfile(getEnv("CAFAI_PROVIDER_PROFILE", "azure")),
 		ServerAddr:                   getEnv("CAFAI_SERVER_ADDR", ":8080"),
 		DatabasePath:                 getEnv("CAFAI_DATABASE_PATH", filepath.Join(repoRoot, "tmp", "cafai_mvp.db")),
 		MigrationsDir:                getEnv("CAFAI_MIGRATIONS_DIR", filepath.Join(repoRoot, "backend", "scripts", "migrations")),
@@ -74,6 +89,19 @@ func Load() (Config, error) {
 		AzureBlobSASToken:            os.Getenv("AZURE_BLOB_SAS_TOKEN"),
 		AzureRenderURL:               os.Getenv("AZURE_RENDER_URL"),
 		AzureRenderAPIKey:            os.Getenv("AZURE_RENDER_API_KEY"),
+		VultrAnalysisURL:             os.Getenv("VULTR_ANALYSIS_URL"),
+		VultrAnalysisAPIKey:          os.Getenv("VULTR_ANALYSIS_API_KEY"),
+		VultrLLMURL:                  os.Getenv("VULTR_LLM_URL"),
+		VultrLLMAPIKey:               os.Getenv("VULTR_LLM_API_KEY"),
+		VultrGenerationURL:           os.Getenv("VULTR_GENERATION_URL"),
+		VultrGenerationAPIKey:        os.Getenv("VULTR_GENERATION_API_KEY"),
+		VultrObjectStorageEndpoint:   os.Getenv("VULTR_OBJECT_STORAGE_ENDPOINT"),
+		VultrObjectStorageRegion:     getEnv("VULTR_OBJECT_STORAGE_REGION", "ewr1"),
+		VultrObjectStorageBucket:     os.Getenv("VULTR_OBJECT_STORAGE_BUCKET"),
+		VultrObjectStorageAccessKey:  os.Getenv("VULTR_OBJECT_STORAGE_ACCESS_KEY"),
+		VultrObjectStorageSecretKey:  os.Getenv("VULTR_OBJECT_STORAGE_SECRET_KEY"),
+		VultrRenderURL:               os.Getenv("VULTR_RENDER_URL"),
+		VultrRenderAPIKey:            os.Getenv("VULTR_RENDER_API_KEY"),
 	}, nil
 }
 
@@ -129,4 +157,12 @@ func splitCSV(value string) []string {
 		return []string{"http://localhost:5173"}
 	}
 	return results
+}
+
+func normalizeProviderProfile(value string) string {
+	trimmed := strings.ToLower(strings.TrimSpace(value))
+	if trimmed == "" {
+		return "azure"
+	}
+	return trimmed
 }

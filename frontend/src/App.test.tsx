@@ -13,6 +13,7 @@ describe("App", () => {
           status: "healthy",
           timestamp: "2026-03-13T00:00:00Z",
           version: "0.1.0-mvp",
+          provider_profile: "azure",
         }),
       }),
     );
@@ -33,6 +34,7 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByText("healthy")).toBeInTheDocument();
     });
+    expect(screen.getByText("Provider azure")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Preview" })).not.toBeInTheDocument();
   });
 
@@ -68,6 +70,7 @@ describe("App", () => {
               status: "healthy",
               timestamp: "2026-03-13T00:00:00Z",
               version: "0.1.0-mvp",
+              provider_profile: "azure",
             }),
           } as Response;
         }

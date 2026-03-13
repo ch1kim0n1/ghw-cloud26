@@ -11,30 +11,61 @@ import (
 )
 
 func NewPhaseTwoClients(cfg config.Config, logger *slog.Logger) (AnalysisClient, OpenAIClient, error) {
-	missing := make([]string, 0)
-	for _, field := range []struct {
-		name  string
-		value string
-	}{
-		{name: "AZURE_VIDEO_INDEXER_URL", value: cfg.AzureVideoIndexerURL},
-		{name: "AZURE_VIDEO_INDEXER_ACCOUNT_ID", value: cfg.AzureVideoIndexerAccountID},
-		{name: "AZURE_VIDEO_INDEXER_LOCATION", value: cfg.AzureVideoIndexerLocation},
-		{name: "AZURE_VIDEO_INDEXER_ACCESS_TOKEN", value: cfg.AzureVideoIndexerAccessToken},
-		{name: "AZURE_OPENAI_URL", value: cfg.AzureOpenAIURL},
-		{name: "AZURE_OPENAI_API_KEY", value: cfg.AzureOpenAIApiKey},
-		{name: "AZURE_OPENAI_DEPLOYMENT", value: cfg.AzureOpenAIDeployment},
-	} {
-		if strings.TrimSpace(field.value) == "" {
-			missing = append(missing, field.name)
-		}
+	profile := normalizeProviderProfile(cfg.ProviderProfile)
+	if err := validateProviderProfile(profile); err != nil {
+		return nil, nil, err
 	}
-	if len(missing) > 0 {
-		return nil, nil, fmt.Errorf(
-			"phase 2 analysis is enabled by design and cannot run until Azure configuration is complete; set the missing environment variables before starting the server: %s",
-			strings.Join(missing, ", "),
-		)
-	}
-
 	httpClient := &http.Client{Timeout: 60 * time.Second}
-	return NewAzureVideoIndexerClient(cfg, logger, httpClient), NewAzureOpenAIClient(cfg, logger, httpClient), nil
+
+	switch profile {
+	case ProviderProfileAzure:
+		missing := make([]string, 0)
+		for _, field := range []struct {
+			name  string
+			value string
+		}{
+			{name: "AZURE_VIDEO_INDEXER_URL", value: cfg.AzureVideoIndexerURL},
+			{name: "AZURE_VIDEO_INDEXER_ACCOUNT_ID", value: cfg.AzureVideoIndexerAccountID},
+			{name: "AZURE_VIDEO_INDEXER_LOCATION", value: cfg.AzureVideoIndexerLocation},
+			{name: "AZURE_VIDEO_INDEXER_ACCESS_TOKEN", value: cfg.AzureVideoIndexerAccessToken},
+			{name: "AZURE_OPENAI_URL", value: cfg.AzureOpenAIURL},
+			{name: "AZURE_OPENAI_API_KEY", value: cfg.AzureOpenAIApiKey},
+			{name: "AZURE_OPENAI_DEPLOYMENT", value: cfg.AzureOpenAIDeployment},
+		} {
+			if strings.TrimSpace(field.value) == "" {
+				missing = append(missing, field.name)
+			}
+		}
+		if len(missing) > 0 {
+			return nil, nil, fmt.Errorf(
+				"phase 2 analysis is enabled by design and cannot run until azure configuration is complete; set the missing environment variables before starting the server: %s",
+				strings.Join(missing, ", "),
+			)
+		}
+		return NewAzureVideoIndexerClient(cfg, logger, httpClient), NewAzureOpenAIClient(cfg, logger, httpClient), nil
+	case ProviderProfileVultr:
+		missing := make([]string, 0)
+		for _, field := range []struct {
+			name  string
+			value string
+		}{
+			{name: "VULTR_ANALYSIS_URL", value: cfg.VultrAnalysisURL},
+			{name: "VULTR_ANALYSIS_API_KEY", value: cfg.VultrAnalysisAPIKey},
+			{name: "VULTR_LLM_URL", value: cfg.VultrLLMURL},
+			{name: "VULTR_LLM_API_KEY", value: cfg.VultrLLMAPIKey},
+		} {
+			if strings.TrimSpace(field.value) == "" {
+				missing = append(missing, field.name)
+			}
+		}
+		if len(missing) > 0 {
+			return nil, nil, fmt.Errorf(
+				"phase 2 analysis is enabled by design and cannot run until vultr configuration is complete; set the missing environment variables before starting the server: %s",
+				strings.Join(missing, ", "),
+			)
+		}
+		return NewVultrAnalysisClient(cfg, logger, httpClient), NewVultrLLMClient(cfg, logger, httpClient), nil
+	default:
+		return nil, nil, fmt.Errorf("unsupported provider profile %q", cfg.ProviderProfile)
+	}
 }

@@ -16,8 +16,8 @@ Finish the MVP first. Post-MVP work starts only after the MVP is running end to 
 - no auth in MVP
 - no fallback generation path in MVP
 - local storage and SQLite are used in MVP control flow
-- Azure Blob Storage is temporary artifact storage only
-- heavy analysis, generation, audio, and rendering use Azure services
+- Azure Blob Storage or Vultr Object Storage is temporary artifact storage only
+- heavy analysis, generation, audio, and rendering use Azure services by default, with a Vultr provider profile supported for Phases 2-4
 - async processing uses a polling worker or goroutine model
 
 ## 3. MVP Goal
@@ -37,7 +37,7 @@ Deliverables:
 - local upload directories
 - backend and frontend bootstrap
 - environment configuration
-- Azure service integration placeholders
+- provider integration placeholders
 
 Exit criteria:
 - app starts locally
@@ -62,7 +62,7 @@ Exit criteria:
 Tasks:
 - implement `POST /api/jobs/{job_id}/start-analysis`
 - add polling worker
-- submit video to Azure Video Indexer and Azure OpenAI
+- submit video to Azure Video Indexer and Azure OpenAI, or to the configured Vultr analysis and LLM services
 - persist scenes
 - persist proposed slots
 - expose slots in the dashboard
@@ -80,7 +80,7 @@ Tasks:
 - generate suggested product line
 - implement product line review UI
 - implement generation request with `product_line_mode`
-- submit generation request to Azure Machine Learning and Azure OpenAI
+- submit generation request to Azure Machine Learning and Azure OpenAI, or to the configured Vultr generation and LLM services
 - store generated clip metadata
 - expose generation progress and failure state
 
@@ -93,8 +93,8 @@ Exit criteria:
 ### Phase 4: Preview Rendering
 Tasks:
 - submit preview render request
-- push generation artifact to Azure Blob Storage
-- run render in Azure Container Apps using ffmpeg
+- push generation artifact to Azure Blob Storage or Vultr Object Storage
+- run render in Azure Container Apps using ffmpeg or in a Vultr-hosted render service
 - apply Azure AI Speech output or simple crossfade smoothing
 - copy final preview back to local storage
 - store one preview output

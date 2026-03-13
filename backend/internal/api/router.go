@@ -26,7 +26,7 @@ type Dependencies struct {
 
 func NewRouter(deps Dependencies) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/health", newHealthHandler(deps.Config.Version))
+	mux.HandleFunc("GET /api/health", newHealthHandler(deps.Config.Version, deps.Config.ProviderProfile))
 	registerRoutes(mux, deps)
 
 	handler := corsMiddleware(deps.Config.AllowedOrigins, mux)

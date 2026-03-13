@@ -120,6 +120,8 @@ ghw-cloud26/
 |   `-- mvp_baseline_scene.mp4
 |-- infra/
 |   `-- azure/
+|   |   `-- notes.md
+|   `-- vultr/
 |       `-- notes.md
 `-- tmp/
     |-- uploads/
@@ -132,7 +134,7 @@ ghw-cloud26/
 - HTTP handlers live in `backend/internal/api/`
 - SQL access lives in `backend/internal/db/`
 - domain structs live in `backend/internal/models/`
-- Azure integration code lives in `backend/internal/services/`
+- provider integration code lives in `backend/internal/services/`
 - the polling worker lives in `backend/internal/worker/`
 - UI pages live in `frontend/src/pages/`
 - shared API calls from the frontend live in `frontend/src/services/`
@@ -146,7 +148,7 @@ The backend is a thin control plane:
 
 - save files locally
 - write SQLite rows
-- call Azure services
+- call provider services
 - expose JSON APIs
 
 Backend local prerequisites:

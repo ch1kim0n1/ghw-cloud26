@@ -178,6 +178,7 @@ func TestNewPhaseTwoClientsRequiresCompleteConfig(t *testing.T) {
 func TestNewPhaseTwoClientsReturnsAzureClientsWhenConfigured(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	cfg := config.Config{
+		ProviderProfile:              services.ProviderProfileAzure,
 		AzureVideoIndexerURL:         "https://video.example.com",
 		AzureVideoIndexerAccountID:   "account",
 		AzureVideoIndexerLocation:    "trial",
@@ -197,6 +198,47 @@ func TestNewPhaseTwoClientsReturnsAzureClientsWhenConfigured(t *testing.T) {
 	}
 }
 
+func TestNewPhaseTwoClientsReturnsVultrClientsWhenConfigured(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	cfg := config.Config{
+		ProviderProfile:     services.ProviderProfileVultr,
+		VultrAnalysisURL:    "https://analysis.example.com",
+		VultrAnalysisAPIKey: "analysis-key",
+		VultrLLMURL:         "https://llm.example.com",
+		VultrLLMAPIKey:      "llm-key",
+	}
+
+	analysisClient, openAIClient, err := services.NewPhaseTwoClients(cfg, logger)
+	if err != nil {
+		t.Fatalf("NewPhaseTwoClients() error = %v", err)
+	}
+	if _, ok := analysisClient.(*services.VultrAnalysisClient); !ok {
+		t.Fatalf("expected VultrAnalysisClient, got %T", analysisClient)
+	}
+	if _, ok := openAIClient.(*services.VultrLLMClient); !ok {
+		t.Fatalf("expected VultrLLMClient, got %T", openAIClient)
+	}
+}
+
+func TestNewPhaseTwoClientsRequireOnlyVultrConfigWhenSelected(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	_, _, err := services.NewPhaseTwoClients(config.Config{ProviderProfile: services.ProviderProfileVultr}, logger)
+	if err == nil {
+		t.Fatal("expected configuration error, got nil")
+	}
+
+	message := err.Error()
+	for _, expected := range []string{"VULTR_ANALYSIS_URL", "VULTR_ANALYSIS_API_KEY", "VULTR_LLM_URL", "VULTR_LLM_API_KEY"} {
+		if !strings.Contains(message, expected) {
+			t.Fatalf("expected Vultr error to mention %q, got %q", expected, message)
+		}
+	}
+	if strings.Contains(message, "AZURE_") {
+		t.Fatalf("expected Vultr-only config error, got %q", message)
+	}
+}
+
 func TestNewPhaseThreeClientRequiresCompleteConfig(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
@@ -212,12 +254,43 @@ func TestNewPhaseThreeClientRequiresCompleteConfig(t *testing.T) {
 func TestNewPhaseThreeClientReturnsAzureClientWhenConfigured(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	client, err := services.NewPhaseThreeClient(config.Config{AzureMLURL: "https://ml.example.com"}, logger)
+	client, err := services.NewPhaseThreeClient(config.Config{
+		ProviderProfile: services.ProviderProfileAzure,
+		AzureMLURL:      "https://ml.example.com",
+	}, logger)
 	if err != nil {
 		t.Fatalf("NewPhaseThreeClient() error = %v", err)
 	}
 	if client == nil {
 		t.Fatal("expected Azure ML client to be created")
+	}
+}
+
+func TestNewPhaseThreeClientReturnsVultrClientWhenConfigured(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	client, err := services.NewPhaseThreeClient(config.Config{
+		ProviderProfile:       services.ProviderProfileVultr,
+		VultrGenerationURL:    "https://generation.example.com",
+		VultrGenerationAPIKey: "generation-key",
+	}, logger)
+	if err != nil {
+		t.Fatalf("NewPhaseThreeClient() error = %v", err)
+	}
+	if _, ok := client.(*services.VultrGenerationClient); !ok {
+		t.Fatalf("expected VultrGenerationClient, got %T", client)
+	}
+}
+
+func TestNewPhaseThreeClientRequiresOnlyVultrConfigWhenSelected(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	_, err := services.NewPhaseThreeClient(config.Config{ProviderProfile: services.ProviderProfileVultr}, logger)
+	if err == nil {
+		t.Fatal("expected configuration error, got nil")
+	}
+	if !strings.Contains(err.Error(), "VULTR_GENERATION_URL") || !strings.Contains(err.Error(), "VULTR_GENERATION_API_KEY") || strings.Contains(err.Error(), "AZURE_") {
+		t.Fatalf("unexpected Vultr phase 3 config error: %v", err)
 	}
 }
 
@@ -248,6 +321,7 @@ func TestNewPhaseFourClientsReturnAzureClientsWhenConfigured(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	blobClient, renderClient, err := services.NewPhaseFourClients(config.Config{
+		ProviderProfile:    services.ProviderProfileAzure,
 		AzureBlobURL:       "https://blob.example.com",
 		AzureBlobContainer: "cafai",
 		AzureBlobSASToken:  "sv=test&sig=test",
@@ -259,5 +333,56 @@ func TestNewPhaseFourClientsReturnAzureClientsWhenConfigured(t *testing.T) {
 	}
 	if blobClient == nil || renderClient == nil {
 		t.Fatal("expected both phase 4 clients to be created")
+	}
+}
+
+func TestNewPhaseFourClientsReturnVultrClientsWhenConfigured(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	blobClient, renderClient, err := services.NewPhaseFourClients(config.Config{
+		ProviderProfile:             services.ProviderProfileVultr,
+		VultrObjectStorageEndpoint:  "https://ewr1.vultrobjects.com",
+		VultrObjectStorageRegion:    "ewr1",
+		VultrObjectStorageBucket:    "hack-bucket",
+		VultrObjectStorageAccessKey: "access-key",
+		VultrObjectStorageSecretKey: "secret-key",
+		VultrRenderURL:              "https://render.example.com",
+		VultrRenderAPIKey:           "render-key",
+	}, logger)
+	if err != nil {
+		t.Fatalf("NewPhaseFourClients() error = %v", err)
+	}
+	if _, ok := blobClient.(*services.VultrObjectStorageClient); !ok {
+		t.Fatalf("expected VultrObjectStorageClient, got %T", blobClient)
+	}
+	if _, ok := renderClient.(*services.VultrRenderClient); !ok {
+		t.Fatalf("expected VultrRenderClient, got %T", renderClient)
+	}
+}
+
+func TestNewPhaseFourClientsRequireOnlyVultrConfigWhenSelected(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	_, _, err := services.NewPhaseFourClients(config.Config{ProviderProfile: services.ProviderProfileVultr}, logger)
+	if err == nil {
+		t.Fatal("expected configuration error, got nil")
+	}
+
+	message := err.Error()
+	for _, expected := range []string{
+		"VULTR_OBJECT_STORAGE_ENDPOINT",
+		"VULTR_OBJECT_STORAGE_REGION",
+		"VULTR_OBJECT_STORAGE_BUCKET",
+		"VULTR_OBJECT_STORAGE_ACCESS_KEY",
+		"VULTR_OBJECT_STORAGE_SECRET_KEY",
+		"VULTR_RENDER_URL",
+		"VULTR_RENDER_API_KEY",
+	} {
+		if !strings.Contains(message, expected) {
+			t.Fatalf("expected Vultr error to mention %q, got %q", expected, message)
+		}
+	}
+	if strings.Contains(message, "AZURE_") {
+		t.Fatalf("expected Vultr-only config error, got %q", message)
 	}
 }

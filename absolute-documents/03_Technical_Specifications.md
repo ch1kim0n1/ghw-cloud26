@@ -2,7 +2,7 @@
 
 ## 1. Purpose
 
-This document defines the implementation-accurate MVP behavior for the Go backend, React dashboard, SQLite data layer, local filesystem storage, and Azure-backed cloud processing used by CAFAI.
+This document defines the implementation-accurate MVP behavior for the Go backend, React dashboard, SQLite data layer, local filesystem storage, and provider-backed cloud processing used by CAFAI.
 
 ## 2. Canonical MVP Contract
 
@@ -26,25 +26,27 @@ The system must not:
 - hide generation failure behind a fallback path
 - expose provider request IDs in standard API responses
 
-## 3. Azure Service Choices
+## 3. Provider Service Choices
+
+The MVP uses `CAFAI_PROVIDER_PROFILE` with `azure` as the default and `vultr` as a supported alternative for Phases 2-4.
 
 The MVP names the following cloud services:
 
-- analysis: Azure Video Indexer + Azure OpenAI
-- CAFAI clip generation: Azure Machine Learning + Azure OpenAI
+- analysis: Azure Video Indexer + Azure OpenAI, or a Vultr-hosted analysis service
+- CAFAI clip generation: Azure Machine Learning + Azure OpenAI, or a Vultr-hosted generation service
 - audio generation and alignment: Azure AI Speech
-- final render: Azure Container Apps running ffmpeg
-- temporary artifact storage: Azure Blob Storage
+- final render: Azure Container Apps running ffmpeg, or a Vultr-hosted render service
+- temporary artifact storage: Azure Blob Storage or Vultr Object Storage
 
 ## 4. Storage Model
 
 ### 4.1 Canonical Rule
 
-Azure Blob Storage is used as temporary cloud artifact storage during generation and rendering. After rendering completes, the final preview file is copied back to local storage for MVP download, inspection, and debugging.
+Azure Blob Storage or Vultr Object Storage is used as temporary cloud artifact storage during generation and rendering. After rendering completes, the final preview file is copied back to local storage for MVP download, inspection, and debugging.
 
 ### 4.2 Storage Roles
 
-- Azure Blob Storage: temporary generation and render artifacts
+- Azure Blob Storage or Vultr Object Storage: temporary generation and render artifacts
 - local storage: uploads, debug artifacts, and final preview download
 
 ## 5. Input and Output Constraints
@@ -87,6 +89,7 @@ Responsibilities:
 - slot selection and product line review endpoints
 - generation start and progress endpoints
 - job creation and status endpoints
+- health endpoint including the active provider profile
 - preview download endpoint
 
 ### 6.2 Local Filesystem
@@ -367,7 +370,7 @@ Insert the CAFAI clip into the source video and produce one preview MP4.
 - do not replace the surrounding source footage
 - output runtime equals source runtime plus inserted clip duration
 - preserve the finish anchor frame as the point where the source movie resumes
-- use Azure Blob Storage for temporary render artifacts
+- use Azure Blob Storage or Vultr Object Storage for temporary render artifacts
 - copy the finished preview back to local storage
 
 ### 13.3 Render Failure Behavior

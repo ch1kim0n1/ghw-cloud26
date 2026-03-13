@@ -56,6 +56,7 @@ export function HealthStatusPanel() {
       <p className="eyebrow">Backend</p>
       <h2>{health.status}</h2>
       <p>Version {health.version}</p>
+      <p>Provider {health.provider_profile}</p>
       <p className="muted">Last response: {health.timestamp}</p>
     </section>
   );

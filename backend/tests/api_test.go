@@ -50,6 +50,9 @@ func TestHealthEndpoint(t *testing.T) {
 	if payload["status"] != "healthy" {
 		t.Fatalf("expected healthy status, got %#v", payload["status"])
 	}
+	if payload["provider_profile"] != "azure" {
+		t.Fatalf("expected azure provider profile, got %#v", payload["provider_profile"])
+	}
 }
 
 func TestPreviewRouteReturnsStandardNotFoundEnvelopeForMissingJob(t *testing.T) {
@@ -2135,6 +2138,7 @@ func intString(value int) string {
 func testConfig(root string) config.Config {
 	return config.Config{
 		RepoRoot:           root,
+		ProviderProfile:    "azure",
 		ServerAddr:         ":8080",
 		DatabasePath:       filepath.Join(root, "tmp", "cafai_mvp.db"),
 		MigrationsDir:      filepath.Join("..", "scripts", "migrations"),
