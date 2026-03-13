@@ -1,9 +1,11 @@
 # Coding Standards
 
 ## 1. Purpose
+
 Keep the MVP implementation consistent, direct, and aligned with the documented CAFAI workflow.
 
 ## 2. General Rules
+
 - prioritize implementation accuracy over pitch language
 - document the MVP that actually exists, not a future platform
 - keep handlers thin and services focused
@@ -12,8 +14,11 @@ Keep the MVP implementation consistent, direct, and aligned with the documented 
 - preserve one source of truth for job statuses, stage names, slot statuses, and error codes
 
 ## 3. Canonical Enum Rules
+
 ### Job Status
+
 Job statuses are lower snake_case:
+
 - `queued`
 - `analyzing`
 - `generating`
@@ -22,7 +27,9 @@ Job statuses are lower snake_case:
 - `failed`
 
 ### Current Stage
+
 Current stages are lower snake_case, for example:
+
 - `ready_for_analysis`
 - `analysis_submission`
 - `analysis_poll`
@@ -35,7 +42,9 @@ Current stages are lower snake_case, for example:
 - `render_poll`
 
 ### Slot Status
+
 Slot statuses are lower snake_case:
+
 - `proposed`
 - `selected`
 - `rejected`
@@ -44,13 +53,17 @@ Slot statuses are lower snake_case:
 - `failed`
 
 ### Error Code
+
 Error codes are upper snake_case, for example:
+
 - `NO_SUITABLE_SLOT_FOUND`
 - `GENERATION_FAILED`
 - `PREVIEW_RENDER_FAILED`
 
 ## 4. MVP Truth Rules
+
 The following facts must stay consistent across code and docs:
+
 - the MVP strategy name is CAFAI
 - the system proposes up to 3 candidate slots automatically
 - slot targets are anchor-frame pairs inside scenes
@@ -64,7 +77,9 @@ The following facts must stay consistent across code and docs:
 - provider request IDs stay internal only
 
 ## 5. Go Backend Standards
+
 ### Naming
+
 - files: snake_case
 - exported types: PascalCase
 - exported methods: PascalCase
@@ -72,31 +87,37 @@ The following facts must stay consistent across code and docs:
 - constants: UPPER_SNAKE_CASE
 
 ### Structure
+
 - `api/` handles HTTP only
 - `db/` handles SQL only
 - `services/` contains domain logic and Azure calls
 - `worker/` advances async jobs and updates state
 
 ### Data Access
+
 - use parameterized SQL only
 - wrap errors with context
 - use direct SQL for MVP; do not add an ORM
 - keep SQLite DDL executable as written
 
 ### State Handling
+
 - never invent ad-hoc job states
 - never hardcode frame rate assumptions
 - slot rejection and re-pick behavior must be explicit in code
 - preserve generated clip artifacts on render failure
 
 ## 6. React Frontend Standards
+
 ### Naming
+
 - components: PascalCase.tsx
 - hooks: useThing.ts
 - service files: camelCase.ts
 - types: PascalCase
 
 ### UI Behavior
+
 - always show loading, error, and empty states
 - polling must stop on terminal job states
 - slot cards must clearly show rank, anchors, score, and reasoning
@@ -104,6 +125,7 @@ The following facts must stay consistent across code and docs:
 - the product line review step must appear before generation starts
 
 ## 7. API Standards
+
 - MVP API base path is `/api`
 - no auth in MVP
 - JSON uses snake_case
@@ -126,12 +148,14 @@ Standard error shape:
 ```
 
 ## 8. Azure Integration Standards
+
 - Azure calls must be wrapped behind service interfaces or clients
 - persist provider request IDs in internal logs and metadata only
 - treat failed required cloud stages as terminal for the job
 - do not silently swallow provider failures
 
 ## 9. Audio and Media Standards
+
 - always use source FPS from the uploaded video
 - preserve anchor-frame ordering exactly
 - default generated clip duration is 6 seconds
@@ -140,7 +164,9 @@ Standard error shape:
 - audio transitions must use simple crossfade smoothing at both insertion boundaries
 
 ## 10. Testing Standards
+
 Minimum MVP coverage:
+
 - product creation validation
 - campaign creation validation
 - explicit analysis start path
@@ -152,12 +178,14 @@ Minimum MVP coverage:
 - render-failure-with-retry path
 
 Do not spend MVP time on:
+
 - load tests
 - multi-tenant tests
 - auth tests
 - production cloud deployment tests
 
 ## 11. Documentation Standards
+
 - when MVP decisions change, update all affected docs in the same pass
 - remove stale sections instead of appending contradictory replacements
 - future ideas belong under clearly marked post-MVP sections only

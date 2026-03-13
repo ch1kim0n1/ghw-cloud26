@@ -1,10 +1,13 @@
 # Repository Structure
 
 ## 1. Purpose
+
 Define the monorepo layout for the MVP implementation only.
 
 ## 2. Monorepo Decision
+
 Use one repository for:
+
 - Go backend
 - React frontend
 - SQLite schema and seed scripts
@@ -12,6 +15,7 @@ Use one repository for:
 - demo assets
 
 ## 3. Canonical Layout
+
 ```text
 ghw-cloud26/
 |-- README.md
@@ -124,6 +128,7 @@ ghw-cloud26/
 ```
 
 ## 4. Placement Rules
+
 - HTTP handlers live in `backend/internal/api/`
 - SQL access lives in `backend/internal/db/`
 - domain structs live in `backend/internal/models/`
@@ -134,15 +139,20 @@ ghw-cloud26/
 - demo validation assets live in `demo/`
 
 ## 5. Directory Intent
+
 ### Backend
+
 The backend is a thin control plane:
+
 - save files locally
 - write SQLite rows
 - call Azure services
 - expose JSON APIs
 
 ### Frontend
+
 The frontend is an operator dashboard for:
+
 - product creation
 - campaign creation
 - explicit analysis start
@@ -151,4 +161,5 @@ The frontend is an operator dashboard for:
 - preview download
 
 ### tmp/
+
 The temp directory is expected in MVP because local paths are part of debugging and demo visibility.

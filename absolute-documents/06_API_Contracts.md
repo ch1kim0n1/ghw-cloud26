@@ -1,9 +1,11 @@
 # API Contracts
 
 ## 1. Purpose
+
 Define the MVP REST API consumed by the React dashboard.
 
 ## 2. Conventions
+
 - base path: `/api`
 - auth: none in MVP
 - response format: JSON unless downloading the preview MP4
@@ -12,8 +14,11 @@ Define the MVP REST API consumed by the React dashboard.
 - local filesystem paths may be returned intentionally for MVP debugging
 
 ## 3. Health
+
 ### GET `/api/health`
+
 Response:
+
 ```json
 {
   "status": "healthy",
@@ -23,13 +28,17 @@ Response:
 ```
 
 ## 4. Products
+
 ### POST `/api/products`
+
 Create a reusable product entry.
 
 Content-Type:
+
 - `multipart/form-data`
 
 Form fields:
+
 - `name` required
 - `description` optional
 - `category` optional
@@ -38,9 +47,11 @@ Form fields:
 - `image_file` optional PNG or JPG
 
 Validation:
+
 - at least one of `image_file` or `source_url` must be present
 
 Response:
+
 ```json
 {
   "id": "prod_001",
@@ -55,7 +66,9 @@ Response:
 ```
 
 ### GET `/api/products`
+
 Response:
+
 ```json
 {
   "products": [
@@ -74,20 +87,26 @@ Response:
 ```
 
 ## 5. Campaigns
+
 ### POST `/api/campaigns`
+
 Create a campaign and upload the source video. This endpoint does not start analysis.
 
 Content-Type:
+
 - `multipart/form-data`
 
 Required form fields:
+
 - `name`
 - `video_file`
 
 Optional campaign fields:
+
 - `target_ad_duration_seconds` default `6`
 
 Product attachment options:
+
 - provide `product_id`
 - or create a product inline with:
   - `product_name`
@@ -97,10 +116,12 @@ Product attachment options:
   - `product_image_file`
 
 Video validation:
+
 - file must be H.264 MP4
 - duration must be between 10 and 20 minutes for the full MVP path
 
 Response:
+
 ```json
 {
   "campaign_id": "camp_001",
@@ -117,7 +138,9 @@ Response:
 ```
 
 ### GET `/api/campaigns/{campaign_id}`
+
 Response:
+
 ```json
 {
   "campaign_id": "camp_001",
@@ -132,10 +155,13 @@ Response:
 ```
 
 ## 6. Analysis Start
+
 ### POST `/api/jobs/{job_id}/start-analysis`
+
 Explicitly start the analysis pipeline.
 
 Response:
+
 ```json
 {
   "job_id": "job_001",
@@ -146,8 +172,11 @@ Response:
 ```
 
 ## 7. Jobs
+
 ### GET `/api/jobs/{job_id}`
+
 Response:
+
 ```json
 {
   "id": "job_001",
@@ -172,6 +201,7 @@ Response:
 ```
 
 Allowed `status` values:
+
 - `queued`
 - `analyzing`
 - `generating`
@@ -180,7 +210,9 @@ Allowed `status` values:
 - `failed`
 
 ### GET `/api/jobs/{job_id}/logs`
+
 Response:
+
 ```json
 {
   "job_id": "job_001",
@@ -196,10 +228,13 @@ Response:
 ```
 
 ## 8. Slots
+
 ### GET `/api/jobs/{job_id}/slots`
+
 Return the currently proposed valid candidate slots.
 
 Response:
+
 ```json
 {
   "job_id": "job_001",
@@ -223,7 +258,9 @@ Response:
 ```
 
 ### GET `/api/jobs/{job_id}/slots/{slot_id}`
+
 Response:
+
 ```json
 {
   "id": "slot_001",
@@ -246,9 +283,11 @@ Response:
 ```
 
 ### POST `/api/jobs/{job_id}/slots/{slot_id}/select`
+
 Select a slot and generate the suggested product line for review.
 
 Response:
+
 ```json
 {
   "job_id": "job_001",
@@ -262,9 +301,11 @@ Response:
 ```
 
 ### POST `/api/jobs/{job_id}/slots/{slot_id}/reject`
+
 Reject a proposed slot.
 
 Request:
+
 ```json
 {
   "note": "too close to active dialogue"
@@ -272,6 +313,7 @@ Request:
 ```
 
 Response:
+
 ```json
 {
   "job_id": "job_001",
@@ -282,9 +324,11 @@ Response:
 ```
 
 ### POST `/api/jobs/{job_id}/slots/re-pick`
+
 Ask the system to return the next best valid candidates excluding rejected slots.
 
 Response:
+
 ```json
 {
   "job_id": "job_001",
@@ -295,9 +339,11 @@ Response:
 ```
 
 ### POST `/api/jobs/{job_id}/slots/{slot_id}/generate`
+
 Start CAFAI generation for the selected slot after product line review.
 
 Request:
+
 ```json
 {
   "product_line_mode": "operator",
@@ -306,11 +352,13 @@ Request:
 ```
 
 Allowed `product_line_mode` values:
+
 - `auto`
 - `operator`
 - `disabled`
 
 Response:
+
 ```json
 {
   "job_id": "job_001",
@@ -323,10 +371,13 @@ Response:
 ```
 
 ## 9. Preview Rendering
+
 ### POST `/api/jobs/{job_id}/preview/render`
+
 Start preview rendering for a generated slot. This same endpoint may be called again after a render failure if the generated artifact still exists.
 
 Request:
+
 ```json
 {
   "slot_id": "slot_001"
@@ -334,6 +385,7 @@ Request:
 ```
 
 Response:
+
 ```json
 {
   "job_id": "job_001",
@@ -345,7 +397,9 @@ Response:
 ```
 
 ### GET `/api/jobs/{job_id}/preview`
+
 Response:
+
 ```json
 {
   "job_id": "job_001",
@@ -360,13 +414,17 @@ Response:
 ```
 
 ### GET `/api/jobs/{job_id}/preview/download`
+
 Response:
+
 - `200 OK`
 - `Content-Type: video/mp4`
 - binary MP4 stream
 
 ## 10. Error Response
+
 Standard shape:
+
 ```json
 {
   "error": "no suitable slot found",
@@ -381,6 +439,7 @@ Standard shape:
 ```
 
 Common error codes:
+
 - `INVALID_REQUEST`
 - `INVALID_VIDEO_CODEC`
 - `INVALID_VIDEO_DURATION`
