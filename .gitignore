@@ -1,0 +1,15 @@
+tmp/
+frontend/node_modules/
+frontend/dist/
+frontend/*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
+.env
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.db
+*.sqlite
+*.sqlite3
+*.log
