@@ -170,6 +170,80 @@ func (r *SlotsRepository) UpdateRejected(ctx context.Context, jobID, slotID, not
 	return nil
 }
 
+func (r *SlotsRepository) UpdateSelected(ctx context.Context, jobID, slotID, suggestedProductLine, updatedAt string) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE slots
+		SET
+			status = 'selected',
+			suggested_product_line = ?,
+			final_product_line = NULL,
+			product_line_mode = NULL,
+			generated_clip_path = NULL,
+			generated_audio_path = NULL,
+			generation_error = NULL,
+			updated_at = ?
+		WHERE job_id = ? AND id = ?
+	`, nullIfEmpty(suggestedProductLine), updatedAt, jobID, slotID)
+	if err != nil {
+		return fmt.Errorf("select slot %s for job %s: %w", slotID, jobID, err)
+	}
+	return nil
+}
+
+func (r *SlotsRepository) UpdateGenerationStarted(ctx context.Context, jobID, slotID, productLineMode string, finalProductLine *string, updatedAt string) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE slots
+		SET
+			status = 'generating',
+			product_line_mode = ?,
+			final_product_line = ?,
+			generated_clip_path = NULL,
+			generated_audio_path = NULL,
+			generation_error = NULL,
+			updated_at = ?
+		WHERE job_id = ? AND id = ?
+	`, nullIfEmpty(productLineMode), nullIfEmpty(stringValueOrEmpty(finalProductLine)), updatedAt, jobID, slotID)
+	if err != nil {
+		return fmt.Errorf("mark slot %s for job %s as generating: %w", slotID, jobID, err)
+	}
+	return nil
+}
+
+func (r *SlotsRepository) UpdateGenerationSucceeded(ctx context.Context, jobID, slotID string, generatedClipPath, generatedAudioPath *string, metadata models.Metadata, updatedAt string) error {
+	metadataJSON, err := json.Marshal(metadata)
+	if err != nil {
+		return fmt.Errorf("marshal generation metadata for %s: %w", slotID, err)
+	}
+
+	_, err = r.db.ExecContext(ctx, `
+		UPDATE slots
+		SET
+			status = 'generated',
+			generated_clip_path = ?,
+			generated_audio_path = ?,
+			generation_error = NULL,
+			metadata_json = ?,
+			updated_at = ?
+		WHERE job_id = ? AND id = ?
+	`, nullIfEmpty(stringValueOrEmpty(generatedClipPath)), nullIfEmpty(stringValueOrEmpty(generatedAudioPath)), string(metadataJSON), updatedAt, jobID, slotID)
+	if err != nil {
+		return fmt.Errorf("mark slot %s for job %s as generated: %w", slotID, jobID, err)
+	}
+	return nil
+}
+
+func (r *SlotsRepository) UpdateGenerationFailed(ctx context.Context, jobID, slotID, generationError string, updatedAt string) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE slots
+		SET status = 'failed', generation_error = ?, updated_at = ?
+		WHERE job_id = ? AND id = ?
+	`, nullIfEmpty(generationError), updatedAt, jobID, slotID)
+	if err != nil {
+		return fmt.Errorf("mark slot %s for job %s as failed: %w", slotID, jobID, err)
+	}
+	return nil
+}
+
 type slotScanner interface {
 	Scan(dest ...any) error
 }
@@ -264,4 +338,11 @@ func rejectionNoteFromMetadata(metadata models.Metadata) any {
 		return value
 	}
 	return nil
+}
+
+func stringValueOrEmpty(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }

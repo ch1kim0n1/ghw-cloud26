@@ -39,7 +39,11 @@ func TestNoopClientsReturnPlaceholderError(t *testing.T) {
 		{
 			name: "ml",
 			run: func() error {
-				_, err := services.NewNoopMLClient(logger).SubmitGeneration(context.Background(), services.GenerationRequest{JobID: "job_1"})
+				client := services.NewNoopMLClient(logger)
+				if _, err := client.SubmitGeneration(context.Background(), services.GenerationRequest{JobID: "job_1"}); err != nil {
+					return err
+				}
+				_, err := client.PollGeneration(context.Background(), services.GenerationPollRequest{JobID: "job_1", SlotID: "slot_1", RequestID: "req_1"})
 				return err
 			},
 		},
@@ -182,5 +186,29 @@ func TestNewPhaseTwoClientsReturnsAzureClientsWhenConfigured(t *testing.T) {
 	}
 	if analysisClient == nil || openAIClient == nil {
 		t.Fatal("expected both phase 2 clients to be created")
+	}
+}
+
+func TestNewPhaseThreeClientRequiresCompleteConfig(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	_, err := services.NewPhaseThreeClient(config.Config{}, logger)
+	if err == nil {
+		t.Fatal("expected configuration error, got nil")
+	}
+	if !strings.Contains(err.Error(), "phase 3 generation is enabled by design") || !strings.Contains(err.Error(), "AZURE_ML_URL") {
+		t.Fatalf("unexpected phase 3 config error: %v", err)
+	}
+}
+
+func TestNewPhaseThreeClientReturnsAzureClientWhenConfigured(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	client, err := services.NewPhaseThreeClient(config.Config{AzureMLURL: "https://ml.example.com"}, logger)
+	if err != nil {
+		t.Fatalf("NewPhaseThreeClient() error = %v", err)
+	}
+	if client == nil {
+		t.Fatal("expected Azure ML client to be created")
 	}
 }

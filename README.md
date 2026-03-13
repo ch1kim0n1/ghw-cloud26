@@ -1,6 +1,9 @@
 # ghw-cloud26
 
 ## Development
+- Prerequisites for backend runtime: `ffprobe` and `ffmpeg` on `PATH`
+- Prerequisites for backend tests: `ffmpeg` and `ffprobe` on `PATH`
+- macOS install: `brew install ffmpeg`
 - Backend dev server from the repo root: `go run ./backend/cmd/server`
 - Backend tests from `backend/`: `go test ./...`
 - Frontend install from `frontend/`: `npm install`
@@ -37,35 +40,36 @@ Implemented now:
 - Phase 0: foundation and runtime bootstrap
 - Phase 1: product and campaign ingest
 - Phase 2: explicit analysis start, worker polling, scene persistence, slot review, reject, and re-pick
+- Phase 3: slot selection, product-line review, and CAFAI generation state tracking
 
 Runtime requirements:
-- Phase 2 is part of the shipped app and requires Azure Video Indexer plus Azure OpenAI configuration before the backend will start
+- Phases 2 and 3 are part of the shipped app and require Azure Video Indexer, Azure OpenAI, and Azure Machine Learning configuration before the backend will start
+- Phase 3 runtime also requires local `ffmpeg` because anchor-frame images are extracted before generation submission
 - local SQLite, uploads, and runtime directories remain part of the MVP control plane
 
 Intentionally deferred:
-- Phase 3: slot selection, product-line review, and CAFAI generation
 - Phase 4: preview rendering and download
 
 ## Documentation
-Core engineering docs live in [absolute-documents/01_Product_Design_Document.md](/C:/Users/Vladislav%20Kondratyev/Desktop/GitHub%20Repos/ghw-cloud26/absolute-documents/01_Product_Design_Document.md) through [absolute-documents/08_Task_Decomposition_Plan.md](/C:/Users/Vladislav%20Kondratyev/Desktop/GitHub%20Repos/ghw-cloud26/absolute-documents/08_Task_Decomposition_Plan.md).
+Core engineering docs live in [absolute-documents/01_Product_Design_Document.md](absolute-documents/01_Product_Design_Document.md) through [absolute-documents/08_Task_Decomposition_Plan.md](absolute-documents/08_Task_Decomposition_Plan.md).
 
 Recommended reading order:
-1. [01_Product_Design_Document.md](/C:/Users/Vladislav%20Kondratyev/Desktop/GitHub%20Repos/ghw-cloud26/absolute-documents/01_Product_Design_Document.md)
-2. [02_System_Architecture_Document.md](/C:/Users/Vladislav%20Kondratyev/Desktop/GitHub%20Repos/ghw-cloud26/absolute-documents/02_System_Architecture_Document.md)
-3. [03_Technical_Specifications.md](/C:/Users/Vladislav%20Kondratyev/Desktop/GitHub%20Repos/ghw-cloud26/absolute-documents/03_Technical_Specifications.md)
-4. [06_API_Contracts.md](/C:/Users/Vladislav%20Kondratyev/Desktop/GitHub%20Repos/ghw-cloud26/absolute-documents/06_API_Contracts.md)
-5. [07_Data_Schema_Definitions.md](/C:/Users/Vladislav%20Kondratyev/Desktop/GitHub%20Repos/ghw-cloud26/absolute-documents/07_Data_Schema_Definitions.md)
-6. [08_Task_Decomposition_Plan.md](/C:/Users/Vladislav%20Kondratyev/Desktop/GitHub%20Repos/ghw-cloud26/absolute-documents/08_Task_Decomposition_Plan.md)
+1. [01_Product_Design_Document.md](absolute-documents/01_Product_Design_Document.md)
+2. [02_System_Architecture_Document.md](absolute-documents/02_System_Architecture_Document.md)
+3. [03_Technical_Specifications.md](absolute-documents/03_Technical_Specifications.md)
+4. [06_API_Contracts.md](absolute-documents/06_API_Contracts.md)
+5. [07_Data_Schema_Definitions.md](absolute-documents/07_Data_Schema_Definitions.md)
+6. [08_Task_Decomposition_Plan.md](absolute-documents/08_Task_Decomposition_Plan.md)
 
 Document purposes:
-- [01_Product_Design_Document.md](/C:/Users/Vladislav%20Kondratyev/Desktop/GitHub%20Repos/ghw-cloud26/absolute-documents/01_Product_Design_Document.md): canonical MVP product behavior, constraints, and success criteria
-- [02_System_Architecture_Document.md](/C:/Users/Vladislav%20Kondratyev/Desktop/GitHub%20Repos/ghw-cloud26/absolute-documents/02_System_Architecture_Document.md): local control plane, Azure-backed compute flow, and job lifecycle
-- [03_Technical_Specifications.md](/C:/Users/Vladislav%20Kondratyev/Desktop/GitHub%20Repos/ghw-cloud26/absolute-documents/03_Technical_Specifications.md): implementation-accurate backend, frontend, storage, and media rules
-- [04_Repository_Structure.md](/C:/Users/Vladislav%20Kondratyev/Desktop/GitHub%20Repos/ghw-cloud26/absolute-documents/04_Repository_Structure.md): canonical monorepo layout and placement rules
-- [05_Coding_Standards.md](/C:/Users/Vladislav%20Kondratyev/Desktop/GitHub%20Repos/ghw-cloud26/absolute-documents/05_Coding_Standards.md): naming, state-model, API, and testing standards
-- [06_API_Contracts.md](/C:/Users/Vladislav%20Kondratyev/Desktop/GitHub%20Repos/ghw-cloud26/absolute-documents/06_API_Contracts.md): REST surface, payloads, and error envelope
-- [07_Data_Schema_Definitions.md](/C:/Users/Vladislav%20Kondratyev/Desktop/GitHub%20Repos/ghw-cloud26/absolute-documents/07_Data_Schema_Definitions.md): SQLite schema, indexes, and metadata rules
-- [08_Task_Decomposition_Plan.md](/C:/Users/Vladislav%20Kondratyev/Desktop/GitHub%20Repos/ghw-cloud26/absolute-documents/08_Task_Decomposition_Plan.md): ordered MVP build phases and demo acceptance checklist
+- [01_Product_Design_Document.md](absolute-documents/01_Product_Design_Document.md): canonical MVP product behavior, constraints, and success criteria
+- [02_System_Architecture_Document.md](absolute-documents/02_System_Architecture_Document.md): local control plane, Azure-backed compute flow, and job lifecycle
+- [03_Technical_Specifications.md](absolute-documents/03_Technical_Specifications.md): implementation-accurate backend, frontend, storage, and media rules
+- [04_Repository_Structure.md](absolute-documents/04_Repository_Structure.md): canonical monorepo layout and placement rules
+- [05_Coding_Standards.md](absolute-documents/05_Coding_Standards.md): naming, state-model, API, and testing standards
+- [06_API_Contracts.md](absolute-documents/06_API_Contracts.md): REST surface, payloads, and error envelope
+- [07_Data_Schema_Definitions.md](absolute-documents/07_Data_Schema_Definitions.md): SQLite schema, indexes, and metadata rules
+- [08_Task_Decomposition_Plan.md](absolute-documents/08_Task_Decomposition_Plan.md): ordered MVP build phases and demo acceptance checklist
 
 ## Architecture At A Glance
 The documented MVP architecture is:
@@ -109,8 +113,8 @@ The documented MVP API base path is `/api`, with snake_case JSON and no auth in 
 
 Current implementation status:
 - `GET /api/health` is live
-- products, campaigns, jobs, analysis start, slot list/detail, slot reject, and slot re-pick are implemented
-- slot select, slot generate, and preview routes remain intentionally unimplemented until phases 3 and 4
+- products, campaigns, jobs, analysis start, slot list/detail, slot select, slot reject, slot re-pick, and slot generate are implemented
+- preview routes remain intentionally unimplemented until Phase 4
 
 Planned MVP route groups from the docs:
 - products: `POST /api/products`, `GET /api/products`
@@ -188,8 +192,8 @@ download and debugging access
 Phase 0 foundation is implemented with:
 - a runnable Go backend on `net/http`
 - executable SQLite migrations and auto-created runtime directories
-- Azure-backed Phase 2 client wiring and a polling worker
-- a React + TypeScript dashboard for the live Phase 0-2 workflow
+- Azure-backed Phase 2 and Phase 3 client wiring and a polling worker
+- a React + TypeScript dashboard for the live Phase 0-3 workflow
 - a live health check at `/api/health`
 
 Phase 1 is implemented with:
@@ -205,6 +209,13 @@ Phase 2 is implemented with:
 - dashboard slot review, rejection, and re-pick
 - provider request IDs recorded internally and hidden from standard API responses
 
-Phases 3 and 4 are intentionally deferred:
-- slot selection, product-line review, and generation
+Phase 3 is implemented with:
+- slot selection and suggested product-line generation
+- anchor-frame image extraction for generation inputs
+- dashboard product-line review with `auto`, `operator`, and `disabled` modes
+- worker-driven CAFAI generation submission and polling using Azure Machine Learning plus Azure OpenAI
+- generated artifact metadata persisted on the selected slot
+- generation failures surfaced clearly on both job and slot state
+
+Phase 4 is intentionally deferred:
 - preview rendering, preview status, and preview download

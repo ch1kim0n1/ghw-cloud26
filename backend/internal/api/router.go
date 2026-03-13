@@ -11,16 +11,17 @@ import (
 )
 
 type Dependencies struct {
-	Config         config.Config
-	Logger         *slog.Logger
-	DB             *sql.DB
-	AnalysisClient services.AnalysisClient
-	OpenAIClient   services.OpenAIClient
-	MLClient       services.MLClient
-	SpeechClient   services.SpeechClient
-	BlobClient     services.BlobStorageClient
-	RenderClient   services.RenderClient
-	CafaiGenerator services.CafaiGenerator
+	Config               config.Config
+	Logger               *slog.Logger
+	DB                   *sql.DB
+	AnalysisClient       services.AnalysisClient
+	OpenAIClient         services.OpenAIClient
+	MLClient             services.MLClient
+	AnchorFrameExtractor services.AnchorFrameExtractor
+	SpeechClient         services.SpeechClient
+	BlobClient           services.BlobStorageClient
+	RenderClient         services.RenderClient
+	CafaiGenerator       services.CafaiGenerator
 }
 
 func NewRouter(deps Dependencies) http.Handler {

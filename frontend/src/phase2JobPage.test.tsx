@@ -1,15 +1,15 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { JobPage } from "./pages/JobPage";
 
-describe("Phase 2 job page", () => {
+describe("Phase 3 job page", () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
   });
 
-  it("starts analysis, shows slots, and gates re-pick until all slots are rejected", async () => {
+  it("supports slot review, line review, and generation from the dashboard", async () => {
     const state: {
       job: Record<string, unknown>;
       slots: Array<Record<string, unknown>>;
@@ -98,73 +98,83 @@ describe("Phase 2 job page", () => {
           } as Response;
         }
 
-        if (url.includes("/api/jobs/job_1/slots/slot_1/reject") && init?.method === "POST") {
+        if (url.includes("/api/jobs/job_1/slots/slot_1/select") && init?.method === "POST") {
+          state.job = {
+            ...state.job,
+            current_stage: "line_review",
+            selected_slot_id: "slot_1",
+          };
           state.slots = state.slots.map((slot) =>
-            slot.id === "slot_1" ? { ...slot, status: "rejected" } : slot,
+            slot.id === "slot_1"
+              ? {
+                  ...slot,
+                  status: "selected",
+                  suggested_product_line: "I grabbed this sparkling water earlier.",
+                }
+              : slot,
           );
+          state.logs = [
+            ...state.logs,
+            {
+              timestamp: "2026-03-13T00:02:00Z",
+              event_type: "slot_selected",
+              stage_name: "line_review",
+              message: "slot selected and product line prepared",
+            },
+          ];
+
           return {
             ok: true,
             json: async () => ({
               job_id: "job_1",
               slot_id: "slot_1",
-              slot_status: "rejected",
-              message: "slot rejected",
+              status: "analyzing",
+              current_stage: "line_review",
+              slot_status: "selected",
+              suggested_product_line: "I grabbed this sparkling water earlier.",
+              message: "slot selected and product line prepared",
             }),
           } as Response;
         }
 
-        if (url.includes("/api/jobs/job_1/slots/slot_2/reject") && init?.method === "POST") {
+        if (url.includes("/api/jobs/job_1/slots/slot_1/generate") && init?.method === "POST") {
+          state.job = {
+            ...state.job,
+            status: "generating",
+            current_stage: "generation_poll",
+            progress_percent: 80,
+          };
           state.slots = state.slots.map((slot) =>
-            slot.id === "slot_2" ? { ...slot, status: "rejected" } : slot,
+            slot.id === "slot_1"
+              ? {
+                  ...slot,
+                  status: "generated",
+                  product_line_mode: "operator",
+                  final_product_line: "I picked up this sparkling water earlier.",
+                  generated_clip_path: "tmp/artifacts/job_1/slot_1.mp4",
+                  generated_audio_path: "tmp/artifacts/job_1/slot_1.wav",
+                }
+              : slot,
           );
-          state.job = {
-            ...state.job,
-            metadata: {
-              ...(state.job.metadata as Record<string, unknown>),
-              rejected_slot_ids: ["slot_1", "slot_2"],
-            },
-          };
-          return {
-            ok: true,
-            json: async () => ({
-              job_id: "job_1",
-              slot_id: "slot_2",
-              slot_status: "rejected",
-              message: "slot rejected",
-            }),
-          } as Response;
-        }
-
-        if (url.includes("/api/jobs/job_1/slots/re-pick") && init?.method === "POST") {
-          state.job = {
-            ...state.job,
-            metadata: {
-              ...(state.job.metadata as Record<string, unknown>),
-              repick_count: 1,
-              top_slot_ids: ["slot_3"],
-            },
-          };
-          state.slots = [
+          state.logs = [
+            ...state.logs,
             {
-              id: "slot_3",
-              rank: 1,
-              scene_id: "scene_3",
-              anchor_start_frame: 360,
-              anchor_end_frame: 361,
-              source_fps: 24,
-              quiet_window_seconds: 3.5,
-              score: 0.79,
-              reasoning: "replacement candidate",
-              status: "proposed",
+              timestamp: "2026-03-13T00:03:00Z",
+              event_type: "stage_completed",
+              stage_name: "generation_poll",
+              message: "cafai generation complete",
             },
           ];
+
           return {
             ok: true,
             json: async () => ({
               job_id: "job_1",
-              status: "analyzing",
-              current_stage: "slot_selection",
-              message: "re-pick requested",
+              slot_id: "slot_1",
+              status: "generating",
+              current_stage: "generation_submission",
+              slot_status: "generating",
+              message: "cafai generation started",
             }),
           } as Response;
         }
@@ -209,30 +219,23 @@ describe("Phase 2 job page", () => {
     await waitFor(() => {
       expect(screen.getAllByText("queued").length).toBeGreaterThan(0);
     });
-    expect(screen.queryByText("Product Line Review")).not.toBeInTheDocument();
-
-    const repickButton = screen.getByRole("button", { name: "Re-pick slots" });
-    expect(repickButton).toBeDisabled();
 
     fireEvent.click(screen.getByRole("button", { name: "Start analysis" }));
 
     await screen.findByText("top ranked candidate");
-    expect(screen.getByText("stage_started")).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: "Select" })[0]);
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Reject" })[0]);
-    await screen.findByText("slot rejected");
-    expect(repickButton).toBeDisabled();
+    await screen.findByText("Product Line Review");
+    expect(screen.getByDisplayValue("I grabbed this sparkling water earlier.")).toBeInTheDocument();
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Reject" })[1]);
-    await waitFor(() => {
-      expect(repickButton).not.toBeDisabled();
+    fireEvent.click(screen.getByRole("radio", { name: "Operator edit" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Operator line" }), {
+      target: { value: "I picked up this sparkling water earlier." },
     });
+    fireEvent.click(screen.getByRole("button", { name: "Start generation" }));
 
-    fireEvent.click(repickButton);
-
-    await screen.findByText("replacement candidate");
-    await waitFor(() => {
-      expect(screen.getByText("1 slot(s)")).toBeInTheDocument();
-    });
+    await screen.findByText("Generation complete.");
+    expect(screen.getByText("tmp/artifacts/job_1/slot_1.mp4")).toBeInTheDocument();
+    expect(screen.getByText("stage_completed")).toBeInTheDocument();
   });
 });

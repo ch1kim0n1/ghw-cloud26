@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strconv"
@@ -33,6 +34,9 @@ func (i *MediaInspector) Inspect(ctx context.Context, path string) (MediaInfo, e
 
 	output, err := command.Output()
 	if err != nil {
+		if errors.Is(err, exec.ErrNotFound) {
+			return MediaInfo{}, fmt.Errorf("run ffprobe on %s: %w", path, ensureBinaryOnPath("ffprobe"))
+		}
 		return MediaInfo{}, fmt.Errorf("run ffprobe on %s: %w", path, err)
 	}
 

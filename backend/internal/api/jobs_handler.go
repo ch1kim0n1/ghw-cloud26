@@ -40,6 +40,11 @@ func newJobsHandler(deps Dependencies) http.HandlerFunc {
 }
 
 func newJobService(deps Dependencies) *services.JobService {
+	frameExtractor := deps.AnchorFrameExtractor
+	if frameExtractor == nil {
+		frameExtractor = services.NewFFmpegAnchorFrameExtractor(deps.Config.ArtifactsDir)
+	}
+
 	return services.NewJobService(
 		deps.DB,
 		db.NewJobsRepository(deps.DB),
@@ -50,5 +55,7 @@ func newJobService(deps Dependencies) *services.JobService {
 		db.NewSlotsRepository(deps.DB),
 		deps.AnalysisClient,
 		deps.OpenAIClient,
+		deps.MLClient,
+		frameExtractor,
 	)
 }

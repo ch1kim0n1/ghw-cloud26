@@ -16,8 +16,12 @@ import (
 )
 
 const (
-	internalAnalysisRequestIDKey = "analysis_request_id"
-	internalAnalysisPayloadRef   = "analysis_payload_ref"
+	internalAnalysisRequestIDKey        = "analysis_request_id"
+	internalAnalysisPayloadRef          = "analysis_payload_ref"
+	internalProductLineRequestIDKey     = "product_line_request_id"
+	internalGenerationBriefRequestIDKey = "generation_brief_request_id"
+	internalGenerationRequestIDKey      = "generation_request_id"
+	internalGenerationPayloadRef        = "generation_payload_ref"
 )
 
 type JobService struct {
@@ -30,6 +34,8 @@ type JobService struct {
 	slotsRepository    *db.SlotsRepository
 	analysisClient     AnalysisClient
 	openAIClient       OpenAIClient
+	mlClient           MLClient
+	frameExtractor     AnchorFrameExtractor
 }
 
 func NewJobService(
@@ -42,6 +48,8 @@ func NewJobService(
 	slotsRepository *db.SlotsRepository,
 	analysisClient AnalysisClient,
 	openAIClient OpenAIClient,
+	mlClient MLClient,
+	frameExtractor AnchorFrameExtractor,
 ) *JobService {
 	return &JobService{
 		database:           database,
@@ -53,6 +61,8 @@ func NewJobService(
 		slotsRepository:    slotsRepository,
 		analysisClient:     analysisClient,
 		openAIClient:       openAIClient,
+		mlClient:           mlClient,
+		frameExtractor:     frameExtractor,
 	}
 }
 
@@ -528,6 +538,26 @@ func (s *JobService) ProcessPendingAnalysis(ctx context.Context) error {
 		}
 	}
 
+	generationSubmissionJobs, err := s.jobsRepository.ListByStatusAndStage(ctx, constants.JobStatusGenerating, constants.StageGenerationSubmit)
+	if err != nil {
+		return err
+	}
+	for _, job := range generationSubmissionJobs {
+		if err := s.processGenerationSubmission(ctx, job); err != nil {
+			return err
+		}
+	}
+
+	generationPollJobs, err := s.jobsRepository.ListByStatusAndStage(ctx, constants.JobStatusGenerating, constants.StageGenerationPoll)
+	if err != nil {
+		return err
+	}
+	for _, job := range generationPollJobs {
+		if err := s.processGenerationPoll(ctx, job); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -934,6 +964,10 @@ func sanitizeJob(job models.Job) models.Job {
 	delete(job.Metadata, internalAnalysisRequestIDKey)
 	delete(job.Metadata, internalAnalysisPayloadRef)
 	delete(job.Metadata, internalSlotRankingRequestIDKey)
+	delete(job.Metadata, internalProductLineRequestIDKey)
+	delete(job.Metadata, internalGenerationBriefRequestIDKey)
+	delete(job.Metadata, internalGenerationRequestIDKey)
+	delete(job.Metadata, internalGenerationPayloadRef)
 	job.Metadata = ensureJobMetadata(job.Metadata)
 	return job
 }

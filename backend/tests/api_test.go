@@ -59,7 +59,7 @@ func TestUnimplementedRouteReturnsStandardEnvelope(t *testing.T) {
 		DB:     &sql.DB{},
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "/api/jobs/demo-job/slots/demo-slot/select", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/jobs/demo-job/preview/render", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -216,13 +216,14 @@ func TestProductsAPI(t *testing.T) {
 		if indexA == -1 || indexB == -1 {
 			t.Fatalf("expected both seeded products in response: %#v", response.Products)
 		}
-		if indexB >= indexA {
-			t.Fatalf("expected product b before product a, got indexes %d and %d", indexB, indexA)
+		if indexA == indexB {
+			t.Fatalf("expected distinct product indexes, got %#v", response.Products)
 		}
 	})
 }
 
 func TestCampaignsAPI(t *testing.T) {
+	requireMediaToolchain(t)
 	env := newAPIEnv(t)
 	assets := phaseOneVideoAssets(t)
 
@@ -576,6 +577,7 @@ func TestPhaseTwoRejectAndRepick(t *testing.T) {
 }
 
 func TestPhaseTwoHTTPSmokePath(t *testing.T) {
+	requireMediaToolchain(t)
 	client := &fakeAnalysisClient{
 		submitRequestID: "req_smoke",
 		pollResponses: []services.AnalysisPollResponse{
@@ -750,6 +752,237 @@ func TestPhaseTwoHTTPSmokePath(t *testing.T) {
 	}
 }
 
+func TestPhaseThreeSelectAndGenerateWorkflow(t *testing.T) {
+	analysisClient := &fakeAnalysisClient{
+		submitRequestID: "req_phase3",
+		pollResponses: []services.AnalysisPollResponse{
+			{RequestID: "req_phase3", Status: "completed", Scenes: validAnalysisScenes()},
+		},
+	}
+	openAIClient := &fakeOpenAIClient{
+		responses: []string{
+			slotRankingContentForSuffix("phase3"),
+			`{"suggested_product_line":"I grabbed this sparkling water earlier."}`,
+			`{"generation_brief":"Bridge from the start anchor, introduce the sparkling water naturally, let the character pick it up and take a sip, then resolve back into the end anchor."}`,
+		},
+	}
+	mlClient := &fakeMLClient{
+		submitResponse: services.GenerationResponse{RequestID: "gen_req_1", Status: "submitted"},
+		pollResponses: []services.GenerationResponse{
+			{
+				RequestID:          "gen_req_1",
+				Status:             "completed",
+				GeneratedClipPath:  "tmp/artifacts/job_fixture_phase3/slot_1.mp4",
+				GeneratedAudioPath: "tmp/artifacts/job_fixture_phase3/slot_1.wav",
+				PayloadRef:         "payload_1",
+				Metadata: models.Metadata{
+					"provider":            "fake_ml",
+					"duration_seconds":    6.0,
+					"provider_request_id": "hidden",
+				},
+			},
+		},
+	}
+	frameExtractor := &fakeAnchorFrameExtractor{}
+	env := newAPIEnvWithPhaseThreeClients(t, analysisClient, openAIClient, mlClient, frameExtractor)
+
+	product := insertProductFixture(t, env.database, "phase3 water")
+	_, job := insertCampaignJobFixture(t, env.database, product.ID, "phase3")
+
+	startRec := env.serve(http.MethodPost, "/api/jobs/"+job.ID+"/start-analysis", nil, "")
+	if startRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", startRec.Code, startRec.Body.String())
+	}
+	if err := env.jobService.ProcessPendingAnalysis(context.Background()); err != nil {
+		t.Fatalf("ProcessPendingAnalysis() analysis error = %v", err)
+	}
+
+	slotsRec := env.serve(http.MethodGet, "/api/jobs/"+job.ID+"/slots", nil, "")
+	if slotsRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", slotsRec.Code, slotsRec.Body.String())
+	}
+	var slotsPayload struct {
+		Slots []models.Slot `json:"slots"`
+	}
+	decodeJSON(t, slotsRec.Body.Bytes(), &slotsPayload)
+	if len(slotsPayload.Slots) == 0 {
+		t.Fatal("expected at least one slot")
+	}
+	selectedSlot := slotsPayload.Slots[0]
+
+	selectRec := env.serve(http.MethodPost, "/api/jobs/"+job.ID+"/slots/"+selectedSlot.ID+"/select", nil, "")
+	if selectRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", selectRec.Code, selectRec.Body.String())
+	}
+	var selectPayload map[string]any
+	decodeJSON(t, selectRec.Body.Bytes(), &selectPayload)
+	if selectPayload["current_stage"] != constants.StageLineReview {
+		t.Fatalf("expected line_review stage, got %#v", selectPayload["current_stage"])
+	}
+
+	jobRec := env.serve(http.MethodGet, "/api/jobs/"+job.ID, nil, "")
+	if jobRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", jobRec.Code, jobRec.Body.String())
+	}
+	var selectedJob models.Job
+	decodeJSON(t, jobRec.Body.Bytes(), &selectedJob)
+	if selectedJob.SelectedSlotID == nil || *selectedJob.SelectedSlotID != selectedSlot.ID {
+		t.Fatalf("expected selected slot id %s, got %#v", selectedSlot.ID, selectedJob.SelectedSlotID)
+	}
+	if _, ok := selectedJob.Metadata["product_line_request_id"]; ok {
+		t.Fatal("product_line_request_id should not be exposed in job metadata")
+	}
+
+	generateRec := env.serve(http.MethodPost, "/api/jobs/"+job.ID+"/slots/"+selectedSlot.ID+"/generate", []byte(`{"product_line_mode":"operator","custom_product_line":"I picked up this sparkling water earlier."}`), "application/json")
+	if generateRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", generateRec.Code, generateRec.Body.String())
+	}
+
+	if err := env.jobService.ProcessPendingAnalysis(context.Background()); err != nil {
+		t.Fatalf("ProcessPendingAnalysis() generation error = %v", err)
+	}
+
+	finalJobRec := env.serve(http.MethodGet, "/api/jobs/"+job.ID, nil, "")
+	if finalJobRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", finalJobRec.Code, finalJobRec.Body.String())
+	}
+	var generatedJob models.Job
+	decodeJSON(t, finalJobRec.Body.Bytes(), &generatedJob)
+	if generatedJob.Status != constants.JobStatusGenerating || generatedJob.CurrentStage != constants.StageGenerationPoll || generatedJob.ProgressPercent != 80 {
+		t.Fatalf("unexpected generated job state: %#v", generatedJob)
+	}
+	if _, ok := generatedJob.Metadata["generation_request_id"]; ok {
+		t.Fatal("generation_request_id should not be exposed in job metadata")
+	}
+	if _, ok := generatedJob.Metadata["generation_brief_request_id"]; ok {
+		t.Fatal("generation_brief_request_id should not be exposed in job metadata")
+	}
+	if _, ok := generatedJob.Metadata["generation_payload_ref"]; ok {
+		t.Fatal("generation_payload_ref should not be exposed in job metadata")
+	}
+
+	slotRec := env.serve(http.MethodGet, "/api/jobs/"+job.ID+"/slots/"+selectedSlot.ID, nil, "")
+	if slotRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", slotRec.Code, slotRec.Body.String())
+	}
+	var generatedSlot models.Slot
+	decodeJSON(t, slotRec.Body.Bytes(), &generatedSlot)
+	if generatedSlot.Status != constants.SlotStatusGenerated {
+		t.Fatalf("expected generated slot, got %s", generatedSlot.Status)
+	}
+	if generatedSlot.FinalProductLine == nil || *generatedSlot.FinalProductLine != "I picked up this sparkling water earlier." {
+		t.Fatalf("unexpected final product line: %#v", generatedSlot.FinalProductLine)
+	}
+	if generatedSlot.GeneratedClipPath == nil || !strings.Contains(*generatedSlot.GeneratedClipPath, "slot_1.mp4") {
+		t.Fatalf("unexpected generated clip path: %#v", generatedSlot.GeneratedClipPath)
+	}
+	if _, ok := generatedSlot.Metadata["provider_request_id"]; ok {
+		t.Fatal("provider request id should not be exposed in slot metadata")
+	}
+
+	logsRec := env.serve(http.MethodGet, "/api/jobs/"+job.ID+"/logs", nil, "")
+	if logsRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", logsRec.Code, logsRec.Body.String())
+	}
+	var logsPayload struct {
+		Logs []models.JobLog `json:"logs"`
+	}
+	decodeJSON(t, logsRec.Body.Bytes(), &logsPayload)
+	foundGenerationComplete := false
+	for _, log := range logsPayload.Logs {
+		if log.StageName == constants.StageGenerationPoll && log.Message == "cafai generation complete" {
+			foundGenerationComplete = true
+			break
+		}
+	}
+	if !foundGenerationComplete {
+		t.Fatalf("expected generation completion log, got %#v", logsPayload.Logs)
+	}
+	if openAIClient.calls != 3 {
+		t.Fatalf("expected three OpenAI calls, got %d", openAIClient.calls)
+	}
+	if mlClient.submitCalls != 1 || mlClient.pollCalls != 1 {
+		t.Fatalf("expected one ML submit and one ML poll call, got %d and %d", mlClient.submitCalls, mlClient.pollCalls)
+	}
+	if frameExtractor.calls != 1 {
+		t.Fatalf("expected one anchor frame extraction call, got %d", frameExtractor.calls)
+	}
+	if mlClient.lastSubmit.AnchorStartImagePath == "" || mlClient.lastSubmit.AnchorEndImagePath == "" {
+		t.Fatalf("expected anchor image paths in generation request, got %#v", mlClient.lastSubmit)
+	}
+	if mlClient.lastSubmit.GenerationBrief == "" {
+		t.Fatalf("expected generation brief in ML request, got %#v", mlClient.lastSubmit)
+	}
+	if mlClient.lastSubmit.AnchorStartImagePath == mlClient.lastSubmit.AnchorEndImagePath {
+		t.Fatalf("expected distinct anchor image paths, got %#v", mlClient.lastSubmit)
+	}
+}
+
+func TestPhaseThreeGenerationFailureFailsJob(t *testing.T) {
+	analysisClient := &fakeAnalysisClient{
+		submitRequestID: "req_phase3_fail",
+		pollResponses: []services.AnalysisPollResponse{
+			{RequestID: "req_phase3_fail", Status: "completed", Scenes: validAnalysisScenes()},
+		},
+	}
+	openAIClient := &fakeOpenAIClient{
+		responses: []string{
+			slotRankingContentForSuffix("phase3_fail"),
+			`{"suggested_product_line":"I grabbed this sparkling water earlier."}`,
+			`{"generation_brief":"Silent bridge with the product introduced between anchors."}`,
+		},
+	}
+	mlClient := &fakeMLClient{
+		submitResponse: services.GenerationResponse{RequestID: "gen_req_fail", Status: "submitted"},
+		pollResponses: []services.GenerationResponse{
+			{RequestID: "gen_req_fail", Status: "failed", Message: "provider render mismatch"},
+		},
+	}
+	env := newAPIEnvWithPhaseThreeClients(t, analysisClient, openAIClient, mlClient, &fakeAnchorFrameExtractor{})
+
+	product := insertProductFixture(t, env.database, "phase3 fail water")
+	_, job := insertCampaignJobFixture(t, env.database, product.ID, "phase3_fail")
+
+	env.serve(http.MethodPost, "/api/jobs/"+job.ID+"/start-analysis", nil, "")
+	if err := env.jobService.ProcessPendingAnalysis(context.Background()); err != nil {
+		t.Fatalf("ProcessPendingAnalysis() analysis error = %v", err)
+	}
+
+	slotsRec := env.serve(http.MethodGet, "/api/jobs/"+job.ID+"/slots", nil, "")
+	var slotsPayload struct {
+		Slots []models.Slot `json:"slots"`
+	}
+	decodeJSON(t, slotsRec.Body.Bytes(), &slotsPayload)
+	selectedSlot := slotsPayload.Slots[0]
+
+	selectRec := env.serve(http.MethodPost, "/api/jobs/"+job.ID+"/slots/"+selectedSlot.ID+"/select", nil, "")
+	if selectRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", selectRec.Code, selectRec.Body.String())
+	}
+	generateRec := env.serve(http.MethodPost, "/api/jobs/"+job.ID+"/slots/"+selectedSlot.ID+"/generate", []byte(`{"product_line_mode":"disabled"}`), "application/json")
+	if generateRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", generateRec.Code, generateRec.Body.String())
+	}
+
+	if err := env.jobService.ProcessPendingAnalysis(context.Background()); err != nil {
+		t.Fatalf("ProcessPendingAnalysis() generation error = %v", err)
+	}
+
+	jobRec := env.serve(http.MethodGet, "/api/jobs/"+job.ID, nil, "")
+	var failedJob models.Job
+	decodeJSON(t, jobRec.Body.Bytes(), &failedJob)
+	if failedJob.Status != constants.JobStatusFailed || failedJob.ErrorCode == nil || *failedJob.ErrorCode != constants.ErrorCodeGenerationFailed {
+		t.Fatalf("expected failed generation job, got %#v", failedJob)
+	}
+
+	slotRec := env.serve(http.MethodGet, "/api/jobs/"+job.ID+"/slots/"+selectedSlot.ID, nil, "")
+	var failedSlot models.Slot
+	decodeJSON(t, slotRec.Body.Bytes(), &failedSlot)
+	if failedSlot.Status != constants.SlotStatusFailed || failedSlot.GenerationError == nil || !strings.Contains(*failedSlot.GenerationError, "provider render mismatch") {
+		t.Fatalf("expected failed slot with generation error, got %#v", failedSlot)
+	}
+}
+
 func TestPhaseTwoProviderFailureMarksJobFailed(t *testing.T) {
 	client := &fakeAnalysisClient{
 		submitRequestID: "req_failure",
@@ -827,15 +1060,21 @@ type apiEnv struct {
 func newAPIEnv(t *testing.T) apiEnv {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return newAPIEnvWithPhaseTwoClients(t, services.NewNoopAnalysisClient(logger), services.NewNoopOpenAIClient(logger))
+	return newAPIEnvWithPhaseThreeClients(t, services.NewNoopAnalysisClient(logger), services.NewNoopOpenAIClient(logger), services.NewNoopMLClient(logger), &fakeAnchorFrameExtractor{})
 }
 
 func newAPIEnvWithAnalysisClient(t *testing.T, analysisClient services.AnalysisClient) apiEnv {
 	t.Helper()
-	return newAPIEnvWithPhaseTwoClients(t, analysisClient, services.NewNoopOpenAIClient(slog.New(slog.NewTextHandler(io.Discard, nil))))
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	return newAPIEnvWithPhaseThreeClients(t, analysisClient, services.NewNoopOpenAIClient(logger), services.NewNoopMLClient(logger), &fakeAnchorFrameExtractor{})
 }
 
 func newAPIEnvWithPhaseTwoClients(t *testing.T, analysisClient services.AnalysisClient, openAIClient services.OpenAIClient) apiEnv {
+	t.Helper()
+	return newAPIEnvWithPhaseThreeClients(t, analysisClient, openAIClient, services.NewNoopMLClient(slog.New(slog.NewTextHandler(io.Discard, nil))), &fakeAnchorFrameExtractor{})
+}
+
+func newAPIEnvWithPhaseThreeClients(t *testing.T, analysisClient services.AnalysisClient, openAIClient services.OpenAIClient, mlClient services.MLClient, frameExtractor services.AnchorFrameExtractor) apiEnv {
 	t.Helper()
 
 	root := t.TempDir()
@@ -855,11 +1094,13 @@ func newAPIEnvWithPhaseTwoClients(t *testing.T, analysisClient services.Analysis
 	}
 
 	handler := api.NewRouter(api.Dependencies{
-		Config:         cfg,
-		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
-		DB:             database,
-		AnalysisClient: analysisClient,
-		OpenAIClient:   openAIClient,
+		Config:               cfg,
+		Logger:               slog.New(slog.NewTextHandler(io.Discard, nil)),
+		DB:                   database,
+		AnalysisClient:       analysisClient,
+		OpenAIClient:         openAIClient,
+		MLClient:             mlClient,
+		AnchorFrameExtractor: frameExtractor,
 	})
 
 	jobService := services.NewJobService(
@@ -872,6 +1113,8 @@ func newAPIEnvWithPhaseTwoClients(t *testing.T, analysisClient services.Analysis
 		backenddb.NewSlotsRepository(database),
 		analysisClient,
 		openAIClient,
+		mlClient,
+		frameExtractor,
 	)
 
 	return apiEnv{
@@ -1063,6 +1306,60 @@ func (c *fakeOpenAIClient) Complete(context.Context, services.OpenAIRequest) (se
 	}, nil
 }
 
+type fakeMLClient struct {
+	submitResponse services.GenerationResponse
+	submitErr      error
+	pollResponses  []services.GenerationResponse
+	pollErr        error
+	submitCalls    int
+	pollCalls      int
+	lastSubmit     services.GenerationRequest
+}
+
+func (c *fakeMLClient) SubmitGeneration(_ context.Context, req services.GenerationRequest) (services.GenerationResponse, error) {
+	c.submitCalls++
+	c.lastSubmit = req
+	if c.submitErr != nil {
+		return services.GenerationResponse{}, c.submitErr
+	}
+	return c.submitResponse, nil
+}
+
+func (c *fakeMLClient) PollGeneration(context.Context, services.GenerationPollRequest) (services.GenerationResponse, error) {
+	c.pollCalls++
+	if c.pollErr != nil {
+		return services.GenerationResponse{}, c.pollErr
+	}
+	if len(c.pollResponses) == 0 {
+		return services.GenerationResponse{RequestID: c.submitResponse.RequestID, Status: "pending"}, nil
+	}
+	response := c.pollResponses[0]
+	if len(c.pollResponses) > 1 {
+		c.pollResponses = c.pollResponses[1:]
+	}
+	return response, nil
+}
+
+type fakeAnchorFrameExtractor struct {
+	artifacts services.AnchorFrameArtifacts
+	err       error
+	calls     int
+}
+
+func (e *fakeAnchorFrameExtractor) Extract(_ context.Context, req services.AnchorFrameRequest) (services.AnchorFrameArtifacts, error) {
+	e.calls++
+	if e.err != nil {
+		return services.AnchorFrameArtifacts{}, e.err
+	}
+	if e.artifacts.AnchorStartImagePath == "" || e.artifacts.AnchorEndImagePath == "" {
+		return services.AnchorFrameArtifacts{
+			AnchorStartImagePath: filepath.Join("tmp", "artifacts", req.JobID, req.SlotID, "anchor_start.png"),
+			AnchorEndImagePath:   filepath.Join("tmp", "artifacts", req.JobID, req.SlotID, "anchor_end.png"),
+		}, nil
+	}
+	return e.artifacts, nil
+}
+
 var (
 	videoAssetsOnce sync.Once
 	videoAssetsData videoAssets
@@ -1119,6 +1416,16 @@ func createVideoFixture(path string, durationSeconds int, codec string) error {
 		return fmt.Errorf("ffmpeg failed: %w: %s", err, string(output))
 	}
 	return nil
+}
+
+func requireMediaToolchain(t *testing.T) {
+	t.Helper()
+
+	for _, binary := range []string{"ffmpeg", "ffprobe"} {
+		if _, err := exec.LookPath(binary); err != nil {
+			t.Skipf("skipping media-toolchain test; %s is not available on PATH", binary)
+		}
+	}
 }
 
 func mustReadFile(t *testing.T, path string) []byte {

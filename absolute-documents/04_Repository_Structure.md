@@ -149,6 +149,12 @@ The backend is a thin control plane:
 - call Azure services
 - expose JSON APIs
 
+Backend local prerequisites:
+
+- `ffprobe` must be available on `PATH` for runtime media inspection
+- `ffmpeg` must be available on `PATH` for runtime anchor-frame extraction and the backend media-oriented test suite
+- local development is expected to work on both Windows and macOS
+
 ### Frontend
 
 The frontend is an operator dashboard for:
@@ -158,7 +164,16 @@ The frontend is an operator dashboard for:
 - explicit analysis start
 - slot review
 - product line review
+- CAFAI generation status
 - preview download
+
+For the currently implemented Phase 0-3 workflow, the primary live operator path is:
+
+- product creation
+- campaign creation
+- explicit analysis start
+- slot review with select, reject, and re-pick
+- product line review and CAFAI generation start
 
 ### tmp/
 

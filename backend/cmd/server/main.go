@@ -34,6 +34,10 @@ func main() {
 		logger.Error("ensure runtime directories", "error", err)
 		os.Exit(1)
 	}
+	if err := services.EnsureRuntimeDependencies(); err != nil {
+		logger.Error("check runtime dependencies", "error", err)
+		os.Exit(1)
+	}
 
 	sqliteDB, err := db.Open(ctx, cfg.DatabasePath)
 	if err != nil {
@@ -52,6 +56,11 @@ func main() {
 		logger.Error("configure phase 2 Azure clients", "error", err)
 		os.Exit(1)
 	}
+	mlClient, err := services.NewPhaseThreeClient(cfg, logger)
+	if err != nil {
+		logger.Error("configure phase 3 Azure clients", "error", err)
+		os.Exit(1)
+	}
 	jobService := services.NewJobService(
 		sqliteDB,
 		db.NewJobsRepository(sqliteDB),
@@ -62,6 +71,8 @@ func main() {
 		db.NewSlotsRepository(sqliteDB),
 		analysisClient,
 		openAIClient,
+		mlClient,
+		services.NewFFmpegAnchorFrameExtractor(cfg.ArtifactsDir),
 	)
 
 	processor := worker.NewProcessor(logger, cfg.WorkerInterval)
@@ -73,16 +84,17 @@ func main() {
 	go processor.Run(ctx)
 
 	handler := api.NewRouter(api.Dependencies{
-		Config:         cfg,
-		Logger:         logger,
-		DB:             sqliteDB,
-		AnalysisClient: analysisClient,
-		OpenAIClient:   openAIClient,
-		MLClient:       services.NewNoopMLClient(logger),
-		SpeechClient:   services.NewNoopSpeechClient(logger),
-		BlobClient:     services.NewNoopBlobStorageClient(logger),
-		RenderClient:   services.NewNoopRenderClient(logger),
-		CafaiGenerator: services.NewNoopCafaiGenerator(logger),
+		Config:               cfg,
+		Logger:               logger,
+		DB:                   sqliteDB,
+		AnalysisClient:       analysisClient,
+		OpenAIClient:         openAIClient,
+		MLClient:             mlClient,
+		AnchorFrameExtractor: services.NewFFmpegAnchorFrameExtractor(cfg.ArtifactsDir),
+		SpeechClient:         services.NewNoopSpeechClient(logger),
+		BlobClient:           services.NewNoopBlobStorageClient(logger),
+		RenderClient:         services.NewNoopRenderClient(logger),
+		CafaiGenerator:       services.NewNoopCafaiGenerator(logger),
 	})
 
 	server := &http.Server{

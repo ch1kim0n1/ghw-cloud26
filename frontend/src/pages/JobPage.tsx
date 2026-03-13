@@ -1,14 +1,16 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { JobStatusCard } from "../components/JobStatusCard";
+import { ProductLineEditor, type ProductLineMode } from "../components/ProductLineEditor";
 import { SlotCard } from "../components/SlotCard";
 import { useJob } from "../hooks/useJob";
 import { useJobLogs } from "../hooks/useJobLogs";
 import { useSlots } from "../hooks/useSlots";
 import { startAnalysis } from "../services/analysisApi";
-import { rejectSlot, repickSlots } from "../services/slotsApi";
+import { generateSlot, rejectSlot, repickSlots, selectSlot } from "../services/slotsApi";
 import { ApiError } from "../types/Api";
 import type { Job } from "../types/Job";
+import type { Slot } from "../types/Slot";
 
 function isTerminalJob(job: Job | null): boolean {
   if (!job) {
@@ -17,24 +19,34 @@ function isTerminalJob(job: Job | null): boolean {
   return job.status === "completed" || job.status === "failed";
 }
 
+function isPhaseThreeSettled(slot: Slot | null): boolean {
+  return slot?.status === "generated";
+}
+
 export function JobPage() {
   const { jobId } = useParams();
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [startPending, setStartPending] = useState(false);
+  const [selectingSlotId, setSelectingSlotId] = useState<string | null>(null);
   const [rejectingSlotId, setRejectingSlotId] = useState<string | null>(null);
   const [repickPending, setRepickPending] = useState(false);
+  const [generatePending, setGeneratePending] = useState(false);
   const [jobPollingEnabled, setJobPollingEnabled] = useState(Boolean(jobId));
 
   const { job, error: jobError, loading: jobLoading, refresh: refreshJob } = useJob(jobId, {
     poll: jobPollingEnabled,
   });
 
-  useEffect(() => {
-    setJobPollingEnabled(Boolean(jobId) && !isTerminalJob(job));
-  }, [job, jobId]);
-
-  const shouldPollSlots = Boolean(jobId && job && job.status === "analyzing" && job.current_stage !== "slot_selection");
+  const shouldPollSlots = Boolean(
+    jobId &&
+    job &&
+    (
+      (job.status === "analyzing" &&
+        (job.current_stage === "analysis_submission" || job.current_stage === "analysis_poll")) ||
+      job.status === "generating"
+    ),
+  );
   const { slots, error: slotsError, loading: slotsLoading, refresh: refreshSlots } = useSlots(jobId, {
     poll: shouldPollSlots,
   });
@@ -42,8 +54,25 @@ export function JobPage() {
     poll: jobPollingEnabled,
   });
 
-  const allSlotsRejected = slots.length > 0 && slots.every((slot) => slot.status === "rejected");
+  const selectedSlot =
+    slots.find((slot) => slot.id === job?.selected_slot_id) ??
+    slots.find((slot) => ["selected", "generating", "generated", "failed"].includes(slot.status)) ??
+    null;
+
+  useEffect(() => {
+    setJobPollingEnabled(Boolean(jobId) && !isTerminalJob(job) && !isPhaseThreeSettled(selectedSlot));
+  }, [job, jobId, selectedSlot]);
+
+  const allSlotsRejected =
+    job?.current_stage === "slot_selection" && slots.length > 0 && slots.every((slot) => slot.status === "rejected");
   const canStartAnalysis = Boolean(job && job.status === "queued" && job.current_stage === "ready_for_analysis");
+  const canSelectSlots = Boolean(job && job.status === "analyzing" && job.current_stage === "slot_selection");
+
+  async function refreshAll() {
+    refreshJob();
+    refreshSlots();
+    refreshLogs();
+  }
 
   async function handleStartAnalysis() {
     if (!jobId) {
@@ -57,9 +86,7 @@ export function JobPage() {
     try {
       const response = await startAnalysis(jobId);
       setActionMessage(response.message);
-      refreshJob();
-      refreshSlots();
-      refreshLogs();
+      await refreshAll();
     } catch (reason: unknown) {
       if (reason instanceof ApiError) {
         setActionError(reason.message);
@@ -68,6 +95,30 @@ export function JobPage() {
       }
     } finally {
       setStartPending(false);
+    }
+  }
+
+  async function handleSelect(slotId: string) {
+    if (!jobId) {
+      return;
+    }
+
+    setActionError(null);
+    setActionMessage(null);
+    setSelectingSlotId(slotId);
+
+    try {
+      const response = await selectSlot(jobId, slotId);
+      setActionMessage(String(response.message ?? "slot selected and product line prepared"));
+      await refreshAll();
+    } catch (reason: unknown) {
+      if (reason instanceof ApiError) {
+        setActionError(reason.message);
+      } else {
+        setActionError("Unable to select slot.");
+      }
+    } finally {
+      setSelectingSlotId(null);
     }
   }
 
@@ -83,9 +134,7 @@ export function JobPage() {
     try {
       const response = await rejectSlot(jobId, slotId, "Rejected in dashboard review");
       setActionMessage(String(response.message ?? "slot rejected"));
-      refreshJob();
-      refreshSlots();
-      refreshLogs();
+      await refreshAll();
     } catch (reason: unknown) {
       if (reason instanceof ApiError) {
         setActionError(reason.message);
@@ -109,9 +158,7 @@ export function JobPage() {
     try {
       const response = await repickSlots(jobId);
       setActionMessage(String(response.message ?? "re-pick requested"));
-      refreshJob();
-      refreshSlots();
-      refreshLogs();
+      await refreshAll();
     } catch (reason: unknown) {
       if (reason instanceof ApiError) {
         setActionError(reason.message);
@@ -123,15 +170,41 @@ export function JobPage() {
     }
   }
 
+  async function handleGenerate(mode: ProductLineMode, customProductLine: string) {
+    if (!jobId || !selectedSlot) {
+      return;
+    }
+
+    setActionError(null);
+    setActionMessage(null);
+    setGeneratePending(true);
+
+    try {
+      const response = await generateSlot(jobId, selectedSlot.id, {
+        product_line_mode: mode,
+        custom_product_line: customProductLine,
+      });
+      setActionMessage(String(response.message ?? "cafai generation started"));
+      await refreshAll();
+    } catch (reason: unknown) {
+      if (reason instanceof ApiError) {
+        setActionError(reason.message);
+      } else {
+        setActionError("Unable to start CAFAI generation.");
+      }
+    } finally {
+      setGeneratePending(false);
+    }
+  }
+
   return (
     <div className="page-grid">
       <section className="panel">
         <p className="eyebrow">Job workflow</p>
         <h2>Job dashboard {jobId ?? "demo-job"}</h2>
         <p>
-          Start analysis explicitly, follow worker progress, review proposed
-          insertion slots, and request a re-pick once every current candidate
-          has been rejected.
+          Start analysis explicitly, review the ranked insertion slots, prepare one product line, and start CAFAI
+          generation for the selected candidate.
         </p>
         <div className="status-strip">
           <span>{jobLoading ? "Loading job..." : jobError ?? job?.status ?? "Job unavailable"}</span>
@@ -178,22 +251,12 @@ export function JobPage() {
               <p className="eyebrow">Slot actions</p>
               <h3>Re-pick control</h3>
             </div>
-            <button
-              className="button-secondary"
-              type="button"
-              onClick={handleRepick}
-              disabled={!allSlotsRejected || repickPending}
-            >
+            <button className="button-secondary" type="button" onClick={handleRepick} disabled={!allSlotsRejected || repickPending}>
               {repickPending ? "Requesting..." : "Re-pick slots"}
             </button>
           </div>
-          <p className="muted">
-            Re-pick is only available after all currently proposed slots have
-            been rejected.
-          </p>
-          <p>
-            Current gate: {allSlotsRejected ? "all slots rejected" : "waiting for more rejections"}
-          </p>
+          <p className="muted">Re-pick is only available after all currently proposed slots have been rejected.</p>
+          <p>Current gate: {allSlotsRejected ? "all slots rejected" : "waiting for more rejections"}</p>
         </section>
       </div>
 
@@ -211,12 +274,16 @@ export function JobPage() {
             <SlotCard
               key={slot.id}
               slot={slot}
+              onSelect={handleSelect}
               onReject={handleReject}
-              rejectDisabled={rejectingSlotId !== null && rejectingSlotId !== slot.id}
+              selectDisabled={!canSelectSlots || (selectingSlotId !== null && selectingSlotId !== slot.id)}
+              rejectDisabled={!canSelectSlots || (rejectingSlotId !== null && rejectingSlotId !== slot.id)}
             />
           ))}
         </div>
       </section>
+
+      {selectedSlot ? <ProductLineEditor slot={selectedSlot} pending={generatePending} onGenerate={handleGenerate} /> : null}
     </div>
   );
 }

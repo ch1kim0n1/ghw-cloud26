@@ -56,7 +56,7 @@ describe("App", () => {
     expect(screen.getByText(/Job dashboard test-job/)).toBeInTheDocument();
   });
 
-  it("does not expose a preview route in the phase 0-2 dashboard", () => {
+  it("does not expose a preview route in the phase 0-3 dashboard", () => {
     render(
       <MemoryRouter initialEntries={["/preview/test-job"]}>
         <App />

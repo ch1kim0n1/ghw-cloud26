@@ -63,6 +63,19 @@ Azure Blob Storage is used as temporary cloud artifact storage during generation
 
 ## 6. Local Control Plane
 
+### 6.0 Local Runtime Dependencies
+
+The local Phase 0-3 control plane assumes these command-line tools are available on `PATH`:
+
+- `ffprobe` for runtime media inspection during campaign intake
+- `ffmpeg` for runtime anchor-frame extraction during Phase 3 generation plus backend test fixture generation and later-phase media work
+
+Cross-platform expectation:
+
+- Windows and macOS are both valid local development environments
+- macOS setup should use Homebrew, for example `brew install ffmpeg`
+- the backend should fail fast at startup when `ffprobe` is missing instead of deferring that failure to upload time
+
 ### 6.1 Go API
 
 Responsibilities:
@@ -71,6 +84,8 @@ Responsibilities:
 - request validation
 - SQLite CRUD
 - explicit analysis start endpoint
+- slot selection and product line review endpoints
+- generation start and progress endpoints
 - job creation and status endpoints
 - preview download endpoint
 
@@ -119,6 +134,11 @@ Local code may perform only lightweight pre-processing before cloud submission:
 - persist debug artifacts
 
 Frame math must always use the source video FPS. Never hardcode 24 FPS.
+
+Operational rule:
+
+- if `ffprobe` or `ffmpeg` is not installed locally, the backend startup path should surface a clear dependency error with platform-appropriate install guidance
+- if Azure Video Indexer, Azure OpenAI, or Azure Machine Learning configuration is incomplete, the backend startup path should fail fast instead of silently enabling placeholder runtime behavior
 
 ## 8. Cloud Analysis Stage
 

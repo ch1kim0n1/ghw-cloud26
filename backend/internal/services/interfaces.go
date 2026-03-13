@@ -48,11 +48,46 @@ type OpenAIResponse struct {
 }
 
 type GenerationRequest struct {
-	JobID  string
-	SlotID string
+	JobID                   string
+	SlotID                  string
+	CampaignID              string
+	ProductID               string
+	SceneID                 string
+	SourceVideoPath         string
+	AnchorStartImagePath    string
+	AnchorEndImagePath      string
+	AnchorStartFrame        int
+	AnchorEndFrame          int
+	SourceFPS               float64
+	TargetDurationSeconds   int
+	ProductName             string
+	ProductDescription      string
+	ProductCategory         string
+	ProductContextKeywords  []string
+	ProductImagePath        string
+	ProductSourceURL        string
+	SceneNarrativeSummary   string
+	ProductLineMode         string
+	SuggestedProductLine    string
+	FinalProductLine        string
+	GenerationBrief         string
+	SelectedSlotReasoning   string
+	SelectedSlotQuietWindow float64
 }
 
 type GenerationResponse struct {
+	RequestID          string
+	Status             string
+	GeneratedClipPath  string
+	GeneratedAudioPath string
+	PayloadRef         string
+	Message            string
+	Metadata           models.Metadata
+}
+
+type GenerationPollRequest struct {
+	JobID     string
+	SlotID    string
 	RequestID string
 }
 
@@ -84,6 +119,20 @@ type RenderResponse struct {
 	RequestID string
 }
 
+type AnchorFrameRequest struct {
+	JobID            string
+	SlotID           string
+	VideoPath        string
+	AnchorStartFrame int
+	AnchorEndFrame   int
+	SourceFPS        float64
+}
+
+type AnchorFrameArtifacts struct {
+	AnchorStartImagePath string
+	AnchorEndImagePath   string
+}
+
 type AnalysisClient interface {
 	SubmitAnalysis(context.Context, AnalysisRequest) (AnalysisResponse, error)
 	PollAnalysis(context.Context, AnalysisPollRequest) (AnalysisPollResponse, error)
@@ -95,6 +144,7 @@ type OpenAIClient interface {
 
 type MLClient interface {
 	SubmitGeneration(context.Context, GenerationRequest) (GenerationResponse, error)
+	PollGeneration(context.Context, GenerationPollRequest) (GenerationResponse, error)
 }
 
 type SpeechClient interface {
@@ -111,4 +161,8 @@ type RenderClient interface {
 
 type CafaiGenerator interface {
 	Generate(context.Context, GenerationRequest) (GenerationResponse, error)
+}
+
+type AnchorFrameExtractor interface {
+	Extract(context.Context, AnchorFrameRequest) (AnchorFrameArtifacts, error)
 }
