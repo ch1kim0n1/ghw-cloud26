@@ -5,12 +5,10 @@ export function CreateCampaignPage() {
     <div className="page-grid">
       <CampaignForm />
       <section className="panel">
-        <p className="eyebrow">Expected flow</p>
-        <h2>Campaign setup stays visible</h2>
+        <p className="eyebrow">Phase 1 contract</p>
+        <h2>Campaigns stop before analysis</h2>
         <p>
-          This page reserves the campaign upload and inline-product path so
-          Phase 1 can attach the real multipart workflow without reshaping the
-          dashboard.
+          Campaign creation validates the uploaded H.264 MP4, stores the measured FPS and duration, links the chosen product, and creates a job in <code>queued</code> with <code>ready_for_analysis</code>.
         </p>
       </section>
     </div>

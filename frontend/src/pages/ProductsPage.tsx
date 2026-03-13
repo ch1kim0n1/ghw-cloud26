@@ -5,12 +5,10 @@ export function ProductsPage() {
     <div className="page-grid">
       <ProductForm />
       <section className="panel">
-        <p className="eyebrow">Current state</p>
-        <h2>No products yet</h2>
+        <p className="eyebrow">Phase 1 contract</p>
+        <h2>Reusable product ingest is live</h2>
         <p>
-          Product listing is intentionally empty in Phase 0. The backend route
-          exists and returns a documented placeholder error until Phase 1
-          implements catalog ingest.
+          Products can be created with metadata plus either a retailer URL or an uploaded PNG/JPG. The catalog stays local in SQLite and the uploaded assets are stored on disk for MVP debugging.
         </p>
       </section>
     </div>

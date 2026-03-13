@@ -2,9 +2,12 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/ch1kim0n1/ghw-cloud26/backend/internal/services"
 )
 
 type ErrorResponse struct {
@@ -29,6 +32,15 @@ func writeError(w http.ResponseWriter, status int, code, message string, details
 		Details:    details,
 		Timestamp:  time.Now().UTC().Format(time.RFC3339),
 	})
+}
+
+func writeServiceError(w http.ResponseWriter, err error) {
+	var appErr *services.AppError
+	if errors.As(err, &appErr) {
+		writeError(w, appErr.Status, appErr.Code, appErr.Message, appErr.Details)
+		return
+	}
+	writeError(w, http.StatusInternalServerError, "INTERNAL_SERVER_ERROR", "internal server error", nil)
 }
 
 func recoverMiddleware(logger *slog.Logger, next http.Handler) http.Handler {

@@ -19,3 +19,135 @@
 .health-panel--error {
   border-color: rgba(184, 62, 62, 0.2);
 }
+
+.form-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.field {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.field span,
+.mode-toggle legend {
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.field input,
+.field textarea,
+.field select {
+  width: 100%;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid rgba(17, 33, 50, 0.14);
+  border-radius: 0.85rem;
+  background: rgba(255, 255, 255, 0.96);
+  color: #112132;
+  font: inherit;
+}
+
+.field textarea {
+  resize: vertical;
+}
+
+.field-row {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.form-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.form-actions button,
+.button-secondary {
+  appearance: none;
+  border: none;
+  border-radius: 999px;
+  padding: 0.75rem 1.1rem;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.form-actions button {
+  background: #112132;
+  color: #fff;
+}
+
+.form-actions button:disabled,
+.button-secondary:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.button-secondary {
+  background: rgba(17, 33, 50, 0.08);
+  color: #112132;
+}
+
+.form-message {
+  margin: 1rem 0 0;
+  padding: 0.85rem 1rem;
+  border-radius: 0.9rem;
+}
+
+.form-message--error {
+  background: rgba(184, 62, 62, 0.08);
+  color: #7a1f1f;
+}
+
+.form-message--success {
+  background: rgba(39, 138, 73, 0.1);
+  color: #14582d;
+}
+
+.list-block,
+.inline-product,
+.success-summary {
+  margin-top: 1.25rem;
+}
+
+.list-block__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.mode-toggle {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  border: 1px solid rgba(17, 33, 50, 0.08);
+  border-radius: 1rem;
+  padding: 1rem;
+  margin: 0;
+}
+
+.mode-toggle label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.success-summary {
+  border-top: 1px solid rgba(17, 33, 50, 0.08);
+  padding-top: 1rem;
+}
+
+@media (max-width: 800px) {
+  .field-row {
+    grid-template-columns: 1fr;
+  }
+
+  .list-block__header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

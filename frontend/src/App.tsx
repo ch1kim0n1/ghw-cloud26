@@ -10,12 +10,12 @@ function App() {
     <div className="app-shell">
       <header className="hero">
         <div>
-          <p className="eyebrow">CAFAI foundation</p>
+          <p className="eyebrow">CAFAI phase 1</p>
           <h1>Cloud-assisted ad insertion dashboard</h1>
           <p className="hero-copy">
-            Phase 0 keeps the full operator workflow visible while only the
-            health endpoint is live. The rest of the surface is scaffolded for
-            Phase 1+ implementation.
+            Product ingest and campaign intake are live. Analysis, slot review,
+            generation, and preview rendering remain scaffolded for the next
+            phases.
           </p>
         </div>
         <HealthStatusPanel />

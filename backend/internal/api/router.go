@@ -26,7 +26,7 @@ type Dependencies struct {
 func NewRouter(deps Dependencies) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", newHealthHandler(deps.Config.Version))
-	registerPlaceholderRoutes(mux)
+	registerRoutes(mux, deps)
 
 	handler := corsMiddleware(deps.Config.AllowedOrigins, mux)
 	handler = loggingMiddleware(deps.Logger, handler)
@@ -34,9 +34,9 @@ func NewRouter(deps Dependencies) http.Handler {
 	return handler
 }
 
-func registerPlaceholderRoutes(mux *http.ServeMux) {
-	products := newProductsHandler()
-	campaigns := newCampaignsHandler()
+func registerRoutes(mux *http.ServeMux, deps Dependencies) {
+	products := newProductsHandler(deps)
+	campaigns := newCampaignsHandler(deps)
 	jobs := newJobsHandler()
 	analysis := newAnalysisHandler()
 	slots := newSlotsHandler()
