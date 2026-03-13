@@ -41,7 +41,7 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 	jobs := newJobsHandler(deps)
 	analysis := newAnalysisHandler(deps)
 	slots := newSlotsHandler(deps)
-	preview := newPreviewHandler()
+	preview := newPreviewHandler(deps)
 
 	mux.HandleFunc("POST /api/products", products)
 	mux.HandleFunc("GET /api/products", products)
@@ -58,6 +58,7 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 	mux.HandleFunc("POST /api/jobs/{job_id}/slots/{slot_id}/generate", slots)
 	mux.HandleFunc("POST /api/jobs/{job_id}/preview/render", preview)
 	mux.HandleFunc("GET /api/jobs/{job_id}/preview", preview)
+	mux.HandleFunc("GET /api/jobs/{job_id}/preview/stream", preview)
 	mux.HandleFunc("GET /api/jobs/{job_id}/preview/download", preview)
 }
 

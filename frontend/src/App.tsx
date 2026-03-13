@@ -2,6 +2,7 @@ import { Link, Navigate, Route, Routes } from "react-router-dom";
 import { HealthStatusPanel } from "./components/HealthStatusPanel";
 import { CreateCampaignPage } from "./pages/CreateCampaignPage";
 import { JobPage } from "./pages/JobPage";
+import { PreviewPage } from "./pages/PreviewPage";
 import { ProductsPage } from "./pages/ProductsPage";
 
 function App() {
@@ -32,6 +33,7 @@ function App() {
           <Route path="/" element={<Navigate to="/products" replace />} />
           <Route path="/products" element={<ProductsPage />} />
           <Route path="/campaigns/new" element={<CreateCampaignPage />} />
+          <Route path="/jobs/:jobId/preview" element={<PreviewPage />} />
           <Route path="/jobs/:jobId" element={<JobPage />} />
         </Routes>
       </main>

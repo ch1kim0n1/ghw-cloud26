@@ -18,3 +18,7 @@ export function getPreview(jobId: string): Promise<Preview> {
 export function getPreviewDownloadUrl(jobId: string): string {
   return buildApiUrl(`/api/jobs/${jobId}/preview/download`);
 }
+
+export function getPreviewStreamUrl(jobId: string): string {
+  return buildApiUrl(`/api/jobs/${jobId}/preview/stream`);
+}

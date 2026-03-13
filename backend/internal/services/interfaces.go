@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"io"
 
 	"github.com/ch1kim0n1/ghw-cloud26/backend/internal/models"
 )
@@ -101,8 +102,9 @@ type SpeechResponse struct {
 }
 
 type BlobUploadRequest struct {
-	JobID string
-	Path  string
+	JobID      string
+	Path       string
+	ObjectName string
 }
 
 type BlobUploadResponse struct {
@@ -110,12 +112,42 @@ type BlobUploadResponse struct {
 	BlobURI   string
 }
 
+type BlobDownloadRequest struct {
+	JobID   string
+	BlobURI string
+}
+
+type BlobDownloadResponse struct {
+	RequestID string
+	Body      io.ReadCloser
+}
+
 type RenderRequest struct {
-	JobID  string
-	SlotID string
+	JobID                 string  `json:"job_id"`
+	SlotID                string  `json:"slot_id"`
+	SourceVideoBlobURI    string  `json:"source_video_blob_uri"`
+	GeneratedClipBlobURI  string  `json:"generated_clip_blob_uri"`
+	GeneratedAudioBlobURI string  `json:"generated_audio_blob_uri,omitempty"`
+	AnchorStartFrame      int     `json:"anchor_start_frame"`
+	AnchorEndFrame        int     `json:"anchor_end_frame"`
+	SourceFPS             float64 `json:"source_fps"`
+	TargetOutputName      string  `json:"target_output_name"`
+	AudioStrategy         string  `json:"audio_strategy"`
 }
 
 type RenderResponse struct {
+	RequestID       string          `json:"request_id"`
+	Status          string          `json:"status"`
+	PreviewBlobURI  string          `json:"preview_blob_uri,omitempty"`
+	DurationSeconds float64         `json:"duration_seconds,omitempty"`
+	PayloadRef      string          `json:"payload_ref,omitempty"`
+	Message         string          `json:"message,omitempty"`
+	Metadata        models.Metadata `json:"metadata,omitempty"`
+}
+
+type RenderPollRequest struct {
+	JobID     string
+	SlotID    string
 	RequestID string
 }
 
@@ -153,10 +185,12 @@ type SpeechClient interface {
 
 type BlobStorageClient interface {
 	Upload(context.Context, BlobUploadRequest) (BlobUploadResponse, error)
+	Download(context.Context, BlobDownloadRequest) (BlobDownloadResponse, error)
 }
 
 type RenderClient interface {
 	SubmitRender(context.Context, RenderRequest) (RenderResponse, error)
+	PollRender(context.Context, RenderPollRequest) (RenderResponse, error)
 }
 
 type CafaiGenerator interface {

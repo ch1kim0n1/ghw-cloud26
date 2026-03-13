@@ -52,28 +52,20 @@ func TestHealthEndpoint(t *testing.T) {
 	}
 }
 
-func TestUnimplementedRouteReturnsStandardEnvelope(t *testing.T) {
-	handler := api.NewRouter(api.Dependencies{
-		Config: testConfig(t.TempDir()),
-		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
-		DB:     &sql.DB{},
-	})
+func TestPreviewRouteReturnsStandardNotFoundEnvelopeForMissingJob(t *testing.T) {
+	env := newAPIEnv(t)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/jobs/demo-job/preview/render", nil)
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusNotImplemented {
-		t.Fatalf("expected 501, got %d", rec.Code)
+	rec := env.serve(http.MethodPost, "/api/jobs/demo-job/preview/render", []byte(`{"slot_id":"slot_1"}`), "application/json")
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
 	}
 
 	var payload api.ErrorResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("Unmarshal() error = %v", err)
 	}
-
-	if payload.ErrorCode != "NOT_IMPLEMENTED" {
-		t.Fatalf("expected NOT_IMPLEMENTED, got %q", payload.ErrorCode)
+	if payload.ErrorCode != constants.ErrorCodeResourceNotFound {
+		t.Fatalf("expected %s, got %q", constants.ErrorCodeResourceNotFound, payload.ErrorCode)
 	}
 }
 
@@ -278,6 +270,39 @@ func TestCampaignsAPI(t *testing.T) {
 		decodeJSON(t, rec.Body.Bytes(), &campaign)
 		if campaign.ProductID == "" {
 			t.Fatal("expected inline product to be created")
+		}
+	})
+
+	t.Run("accept baseline profile duration", func(t *testing.T) {
+		body, contentType := multipartRequest(t, map[string]string{
+			"name":       "baseline validation campaign",
+			"product_id": existingProduct.ID,
+		}, map[string]uploadFile{
+			"video_file": {
+				Filename: "baseline.mp4",
+				Content:  mustReadFile(t, assets.BaselineVideo),
+			},
+		})
+
+		rec := env.serve(http.MethodPost, "/api/campaigns", body, contentType)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+
+		var campaign models.Campaign
+		decodeJSON(t, rec.Body.Bytes(), &campaign)
+		if campaign.DurationSeconds < 40 || campaign.DurationSeconds > 60 {
+			t.Fatalf("expected baseline duration, got %f", campaign.DurationSeconds)
+		}
+
+		jobRec := env.serve(http.MethodGet, "/api/jobs/"+campaign.JobID, nil, "")
+		if jobRec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", jobRec.Code, jobRec.Body.String())
+		}
+		var job models.Job
+		decodeJSON(t, jobRec.Body.Bytes(), &job)
+		if got := job.Metadata["input_profile"]; got != "MVP_BASELINE_TEST_PROFILE" {
+			t.Fatalf("expected baseline profile metadata, got %#v", got)
 		}
 	})
 
@@ -918,6 +943,155 @@ func TestPhaseThreeSelectAndGenerateWorkflow(t *testing.T) {
 	}
 }
 
+func TestPhaseFourRenderWorkflow(t *testing.T) {
+	analysisClient := &fakeAnalysisClient{
+		submitRequestID: "req_phase4",
+		pollResponses: []services.AnalysisPollResponse{
+			{RequestID: "req_phase4", Status: "completed", Scenes: validAnalysisScenes()},
+		},
+	}
+	openAIClient := &fakeOpenAIClient{
+		responses: []string{
+			slotRankingContentForSuffix("phase4"),
+			`{"suggested_product_line":"I grabbed this sparkling water earlier."}`,
+			`{"generation_brief":"Bridge from the start anchor, introduce the sparkling water naturally, and resolve into the end anchor."}`,
+		},
+	}
+	mlClient := &fakeMLClient{
+		submitResponse: services.GenerationResponse{RequestID: "gen_req_4", Status: "submitted"},
+		pollResponses: []services.GenerationResponse{
+			{
+				RequestID:          "gen_req_4",
+				Status:             "completed",
+				GeneratedClipPath:  "tmp/artifacts/job_fixture_phase4/slot_1.mp4",
+				GeneratedAudioPath: "tmp/artifacts/job_fixture_phase4/slot_1.wav",
+				Metadata:           models.Metadata{"duration_seconds": 6.0},
+			},
+		},
+	}
+	blobClient := &fakeBlobStorageClient{}
+	renderClient := &fakeRenderClient{
+		submitResponse: services.RenderResponse{RequestID: "render_req_1", Status: "submitted"},
+		pollResponses: []services.RenderResponse{
+			{
+				RequestID: "render_req_1",
+				Status:    "pending",
+			},
+			{
+				RequestID:       "render_req_1",
+				Status:          "completed",
+				PreviewBlobURI:  "https://blob.example.com/renders/job_fixture_phase4_preview.mp4",
+				DurationSeconds: 106.0,
+			},
+		},
+	}
+	env := newAPIEnvWithPreviewClients(t, analysisClient, openAIClient, mlClient, &fakeAnchorFrameExtractor{}, blobClient, renderClient)
+
+	product := insertProductFixture(t, env.database, "phase4 water")
+	_, job := insertCampaignJobFixture(t, env.database, product.ID, "phase4")
+
+	env.serve(http.MethodPost, "/api/jobs/"+job.ID+"/start-analysis", nil, "")
+	if err := env.jobService.ProcessPendingAnalysis(context.Background()); err != nil {
+		t.Fatalf("ProcessPendingAnalysis() analysis error = %v", err)
+	}
+
+	slotsRec := env.serve(http.MethodGet, "/api/jobs/"+job.ID+"/slots", nil, "")
+	var slotsPayload struct {
+		Slots []models.Slot `json:"slots"`
+	}
+	decodeJSON(t, slotsRec.Body.Bytes(), &slotsPayload)
+	selectedSlot := slotsPayload.Slots[0]
+
+	selectRec := env.serve(http.MethodPost, "/api/jobs/"+job.ID+"/slots/"+selectedSlot.ID+"/select", nil, "")
+	if selectRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", selectRec.Code, selectRec.Body.String())
+	}
+	generateRec := env.serve(http.MethodPost, "/api/jobs/"+job.ID+"/slots/"+selectedSlot.ID+"/generate", []byte(`{"product_line_mode":"auto"}`), "application/json")
+	if generateRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", generateRec.Code, generateRec.Body.String())
+	}
+	if err := env.jobService.ProcessPendingAnalysis(context.Background()); err != nil {
+		t.Fatalf("ProcessPendingAnalysis() generation error = %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join("tmp", "artifacts", "job_fixture_phase4"), 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	if err := os.WriteFile("tmp/artifacts/job_fixture_phase4/slot_1.mp4", []byte("fake generated clip"), 0o644); err != nil {
+		t.Fatalf("WriteFile() clip error = %v", err)
+	}
+	if err := os.WriteFile("tmp/artifacts/job_fixture_phase4/slot_1.wav", []byte("fake generated audio"), 0o644); err != nil {
+		t.Fatalf("WriteFile() audio error = %v", err)
+	}
+
+	renderRec := env.serve(http.MethodPost, "/api/jobs/"+job.ID+"/preview/render", []byte(`{"slot_id":"`+selectedSlot.ID+`"}`), "application/json")
+	if renderRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", renderRec.Code, renderRec.Body.String())
+	}
+	var renderPayload map[string]any
+	decodeJSON(t, renderRec.Body.Bytes(), &renderPayload)
+	if renderPayload["current_stage"] != constants.StageRenderSubmit {
+		t.Fatalf("expected render_submission stage, got %#v", renderPayload["current_stage"])
+	}
+
+	if err := env.jobService.ProcessPendingAnalysis(context.Background()); err != nil {
+		t.Fatalf("ProcessPendingAnalysis() render submission error = %v", err)
+	}
+
+	if blobClient.uploads == nil {
+		blobClient.uploads = map[string][]byte{}
+	}
+	blobClient.uploads["https://blob.example.com/renders/job_fixture_phase4_preview.mp4"] = []byte("fake mp4 bytes")
+
+	if err := env.jobService.ProcessPendingAnalysis(context.Background()); err != nil {
+		t.Fatalf("ProcessPendingAnalysis() render poll error = %v", err)
+	}
+
+	previewRec := env.serve(http.MethodGet, "/api/jobs/"+job.ID+"/preview", nil, "")
+	if previewRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", previewRec.Code, previewRec.Body.String())
+	}
+	var preview models.Preview
+	decodeJSON(t, previewRec.Body.Bytes(), &preview)
+	if preview.Status != "completed" {
+		t.Fatalf("expected completed preview, got %s (%v)", preview.Status, preview.ErrorMessage)
+	}
+	if preview.DownloadPath == "" {
+		t.Fatal("expected download path on preview response")
+	}
+
+	jobRec := env.serve(http.MethodGet, "/api/jobs/"+job.ID, nil, "")
+	var completedJob models.Job
+	decodeJSON(t, jobRec.Body.Bytes(), &completedJob)
+	if completedJob.Status != constants.JobStatusCompleted || completedJob.CurrentStage != constants.StageRenderPoll {
+		t.Fatalf("unexpected completed job state: %#v", completedJob)
+	}
+	if _, ok := completedJob.Metadata["render_request_id"]; ok {
+		t.Fatal("render_request_id should not be exposed in job metadata")
+	}
+
+	downloadRec := env.serve(http.MethodGet, "/api/jobs/"+job.ID+"/preview/download", nil, "")
+	if downloadRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", downloadRec.Code, downloadRec.Body.String())
+	}
+	if got := downloadRec.Header().Get("Content-Type"); !strings.Contains(got, "video/mp4") {
+		t.Fatalf("expected video/mp4 content type, got %q", got)
+	}
+	if got := downloadRec.Header().Get("Content-Disposition"); !strings.Contains(got, "attachment;") {
+		t.Fatalf("expected attachment download header, got %q", got)
+	}
+
+	streamRec := env.serve(http.MethodGet, "/api/jobs/"+job.ID+"/preview/stream", nil, "")
+	if streamRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", streamRec.Code, streamRec.Body.String())
+	}
+	if got := streamRec.Header().Get("Content-Type"); !strings.Contains(got, "video/mp4") {
+		t.Fatalf("expected video/mp4 content type, got %q", got)
+	}
+	if got := streamRec.Header().Get("Content-Disposition"); !strings.Contains(got, "inline;") {
+		t.Fatalf("expected inline stream header, got %q", got)
+	}
+}
+
 func TestPhaseThreeGenerationFailureFailsJob(t *testing.T) {
 	analysisClient := &fakeAnalysisClient{
 		submitRequestID: "req_phase3_fail",
@@ -1076,6 +1250,17 @@ func newAPIEnvWithPhaseTwoClients(t *testing.T, analysisClient services.Analysis
 
 func newAPIEnvWithPhaseThreeClients(t *testing.T, analysisClient services.AnalysisClient, openAIClient services.OpenAIClient, mlClient services.MLClient, frameExtractor services.AnchorFrameExtractor) apiEnv {
 	t.Helper()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	return newAPIEnvWithClients(t, analysisClient, openAIClient, mlClient, frameExtractor, services.NewNoopBlobStorageClient(logger), services.NewNoopRenderClient(logger))
+}
+
+func newAPIEnvWithPreviewClients(t *testing.T, analysisClient services.AnalysisClient, openAIClient services.OpenAIClient, mlClient services.MLClient, frameExtractor services.AnchorFrameExtractor, blobClient services.BlobStorageClient, renderClient services.RenderClient) apiEnv {
+	t.Helper()
+	return newAPIEnvWithClients(t, analysisClient, openAIClient, mlClient, frameExtractor, blobClient, renderClient)
+}
+
+func newAPIEnvWithClients(t *testing.T, analysisClient services.AnalysisClient, openAIClient services.OpenAIClient, mlClient services.MLClient, frameExtractor services.AnchorFrameExtractor, blobClient services.BlobStorageClient, renderClient services.RenderClient) apiEnv {
+	t.Helper()
 
 	root := t.TempDir()
 	cfg := testConfig(root)
@@ -1093,14 +1278,18 @@ func newAPIEnvWithPhaseThreeClients(t *testing.T, analysisClient services.Analys
 		t.Fatalf("ApplyMigrations() error = %v", err)
 	}
 
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
 	handler := api.NewRouter(api.Dependencies{
 		Config:               cfg,
-		Logger:               slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Logger:               logger,
 		DB:                   database,
 		AnalysisClient:       analysisClient,
 		OpenAIClient:         openAIClient,
 		MLClient:             mlClient,
 		AnchorFrameExtractor: frameExtractor,
+		BlobClient:           blobClient,
+		RenderClient:         renderClient,
 	})
 
 	jobService := services.NewJobService(
@@ -1111,10 +1300,15 @@ func newAPIEnvWithPhaseThreeClients(t *testing.T, analysisClient services.Analys
 		backenddb.NewJobLogsRepository(database),
 		backenddb.NewScenesRepository(database),
 		backenddb.NewSlotsRepository(database),
+		backenddb.NewPreviewsRepository(database),
 		analysisClient,
 		openAIClient,
 		mlClient,
 		frameExtractor,
+		services.NewLocalStorageService(),
+		blobClient,
+		renderClient,
+		cfg.PreviewsDir,
 	)
 
 	return apiEnv{
@@ -1202,6 +1396,11 @@ func insertProductFixture(t *testing.T, database *sql.DB, name string) models.Pr
 func insertCampaignJobFixture(t *testing.T, database *sql.DB, productID, suffix string) (models.Campaign, models.Job) {
 	t.Helper()
 
+	videoPath := filepath.Join(t.TempDir(), "fixture.mp4")
+	if err := os.WriteFile(videoPath, []byte("fixture campaign video"), 0o644); err != nil {
+		t.Fatalf("WriteFile() campaign fixture video error = %v", err)
+	}
+
 	campaign := models.Campaign{
 		ID:                      "camp_fixture_" + suffix,
 		JobID:                   "job_fixture_" + suffix,
@@ -1210,7 +1409,7 @@ func insertCampaignJobFixture(t *testing.T, database *sql.DB, productID, suffix 
 		Status:                  constants.JobStatusQueued,
 		CurrentStage:            constants.StageReadyForAnalysis,
 		VideoFilename:           "fixture.mp4",
-		VideoPath:               filepath.Join(t.TempDir(), "fixture.mp4"),
+		VideoPath:               videoPath,
 		SourceFPS:               24,
 		DurationSeconds:         900,
 		TargetAdDurationSeconds: 6,
@@ -1245,6 +1444,7 @@ func insertCampaignJobFixture(t *testing.T, database *sql.DB, productID, suffix 
 
 type videoAssets struct {
 	ValidVideo        string
+	BaselineVideo     string
 	ShortVideo        string
 	InvalidCodecVideo string
 }
@@ -1346,6 +1546,71 @@ type fakeAnchorFrameExtractor struct {
 	calls     int
 }
 
+type fakeBlobStorageClient struct {
+	uploads map[string][]byte
+}
+
+func (c *fakeBlobStorageClient) Upload(_ context.Context, req services.BlobUploadRequest) (services.BlobUploadResponse, error) {
+	if c.uploads == nil {
+		c.uploads = map[string][]byte{}
+	}
+	data, err := os.ReadFile(req.Path)
+	if err != nil {
+		return services.BlobUploadResponse{}, err
+	}
+	blobURI := "https://blob.example.com/" + req.ObjectName
+	c.uploads[blobURI] = data
+	return services.BlobUploadResponse{RequestID: "blob_req", BlobURI: blobURI}, nil
+}
+
+func (c *fakeBlobStorageClient) Download(_ context.Context, req services.BlobDownloadRequest) (services.BlobDownloadResponse, error) {
+	if c.uploads == nil {
+		return services.BlobDownloadResponse{}, fmt.Errorf("blob not found")
+	}
+	data, ok := c.uploads[req.BlobURI]
+	if !ok {
+		return services.BlobDownloadResponse{}, fmt.Errorf("blob not found")
+	}
+	return services.BlobDownloadResponse{
+		RequestID: "blob_download_req",
+		Body:      io.NopCloser(bytes.NewReader(data)),
+	}, nil
+}
+
+type fakeRenderClient struct {
+	submitResponse services.RenderResponse
+	pollResponses  []services.RenderResponse
+	submitErr      error
+	pollErr        error
+	submitCalls    int
+	pollCalls      int
+	lastSubmit     services.RenderRequest
+}
+
+func (c *fakeRenderClient) SubmitRender(_ context.Context, req services.RenderRequest) (services.RenderResponse, error) {
+	c.submitCalls++
+	c.lastSubmit = req
+	if c.submitErr != nil {
+		return services.RenderResponse{}, c.submitErr
+	}
+	return c.submitResponse, nil
+}
+
+func (c *fakeRenderClient) PollRender(_ context.Context, req services.RenderPollRequest) (services.RenderResponse, error) {
+	c.pollCalls++
+	if c.pollErr != nil {
+		return services.RenderResponse{}, c.pollErr
+	}
+	if len(c.pollResponses) == 0 {
+		return services.RenderResponse{RequestID: req.RequestID, Status: "pending"}, nil
+	}
+	response := c.pollResponses[0]
+	if len(c.pollResponses) > 1 {
+		c.pollResponses = c.pollResponses[1:]
+	}
+	return response, nil
+}
+
 func (e *fakeAnchorFrameExtractor) Extract(_ context.Context, req services.AnchorFrameRequest) (services.AnchorFrameArtifacts, error) {
 	e.calls++
 	if e.err != nil {
@@ -1378,11 +1643,16 @@ func phaseOneVideoAssets(t *testing.T) videoAssets {
 
 		videoAssetsData = videoAssets{
 			ValidVideo:        filepath.Join(root, "valid.mp4"),
+			BaselineVideo:     filepath.Join(root, "baseline.mp4"),
 			ShortVideo:        filepath.Join(root, "short.mp4"),
 			InvalidCodecVideo: filepath.Join(root, "invalid_codec.mp4"),
 		}
 
 		videoAssetsErr = createVideoFixture(videoAssetsData.ValidVideo, 601, "libx264")
+		if videoAssetsErr != nil {
+			return
+		}
+		videoAssetsErr = createVideoFixture(videoAssetsData.BaselineVideo, 45, "libx264")
 		if videoAssetsErr != nil {
 			return
 		}

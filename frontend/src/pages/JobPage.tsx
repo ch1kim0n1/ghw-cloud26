@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { JobStatusCard } from "../components/JobStatusCard";
 import { ProductLineEditor, type ProductLineMode } from "../components/ProductLineEditor";
 import { SlotCard } from "../components/SlotCard";
 import { useJob } from "../hooks/useJob";
 import { useJobLogs } from "../hooks/useJobLogs";
+import { usePreview } from "../hooks/usePreview";
 import { useSlots } from "../hooks/useSlots";
 import { startAnalysis } from "../services/analysisApi";
+import { getPreviewDownloadUrl, renderPreview } from "../services/previewApi";
 import { generateSlot, rejectSlot, repickSlots, selectSlot } from "../services/slotsApi";
 import { ApiError } from "../types/Api";
 import type { Job } from "../types/Job";
@@ -32,6 +34,7 @@ export function JobPage() {
   const [rejectingSlotId, setRejectingSlotId] = useState<string | null>(null);
   const [repickPending, setRepickPending] = useState(false);
   const [generatePending, setGeneratePending] = useState(false);
+  const [renderPending, setRenderPending] = useState(false);
   const [jobPollingEnabled, setJobPollingEnabled] = useState(Boolean(jobId));
 
   const { job, error: jobError, loading: jobLoading, refresh: refreshJob } = useJob(jobId, {
@@ -53,6 +56,9 @@ export function JobPage() {
   const { logs, error: logsError, loading: logsLoading, refresh: refreshLogs } = useJobLogs(jobId, {
     poll: jobPollingEnabled,
   });
+  const { preview, error: previewError, loading: previewLoading, refresh: refreshPreview } = usePreview(jobId, {
+    poll: job?.status === "stitching",
+  });
 
   const selectedSlot =
     slots.find((slot) => slot.id === job?.selected_slot_id) ??
@@ -72,6 +78,7 @@ export function JobPage() {
     refreshJob();
     refreshSlots();
     refreshLogs();
+    refreshPreview();
   }
 
   async function handleStartAnalysis() {
@@ -197,6 +204,42 @@ export function JobPage() {
     }
   }
 
+  async function handleRenderPreview() {
+    if (!jobId || !selectedSlot) {
+      return;
+    }
+
+    setActionError(null);
+    setActionMessage(null);
+    setRenderPending(true);
+
+    try {
+      const response = await renderPreview(jobId, selectedSlot.id);
+      setActionMessage(String(response.message ?? "preview render started"));
+      await refreshAll();
+    } catch (reason: unknown) {
+      if (reason instanceof ApiError) {
+        setActionError(reason.message);
+      } else {
+        setActionError("Unable to start preview render.");
+      }
+    } finally {
+      setRenderPending(false);
+    }
+  }
+
+  const canRenderPreview = Boolean(
+    selectedSlot &&
+    selectedSlot.status === "generated" &&
+    preview?.status !== "pending" &&
+    preview?.status !== "stitching" &&
+    !renderPending,
+  );
+  const previewDownloadUrl =
+    jobId && preview?.status === "completed" && preview.output_video_path
+      ? getPreviewDownloadUrl(jobId)
+      : undefined;
+
   return (
     <div className="page-grid">
       <section className="panel">
@@ -258,6 +301,34 @@ export function JobPage() {
           <p className="muted">Re-pick is only available after all currently proposed slots have been rejected.</p>
           <p>Current gate: {allSlotsRejected ? "all slots rejected" : "waiting for more rejections"}</p>
         </section>
+
+        <section className="card">
+          <div className="list-block__header">
+            <div>
+              <p className="eyebrow">Preview render</p>
+              <h3>Phase 4</h3>
+            </div>
+            <button className="button-secondary" type="button" onClick={handleRenderPreview} disabled={!canRenderPreview}>
+              {renderPending ? "Starting..." : preview?.status === "failed" ? "Retry render" : "Render preview"}
+            </button>
+          </div>
+          <p className="muted">
+            {previewLoading
+              ? "Loading preview state..."
+              : previewError ?? previewSummary(preview?.status, selectedSlot?.status)}
+          </p>
+          {preview?.error_message ? <p className="form-message form-message--error">{preview.error_message}</p> : null}
+          {preview ? <p>Preview status: {preview.status}</p> : null}
+          {preview ? <p>Retry count: {preview.render_retry_count ?? 0}</p> : null}
+          <div className="form-actions">
+            {preview ? <Link to={`/jobs/${jobId}/preview`}>Open preview</Link> : null}
+            {previewDownloadUrl ? (
+              <a href={previewDownloadUrl} download>
+                Download preview
+              </a>
+            ) : null}
+          </div>
+        </section>
       </div>
 
       <section className="panel">
@@ -286,4 +357,23 @@ export function JobPage() {
       {selectedSlot ? <ProductLineEditor slot={selectedSlot} pending={generatePending} onGenerate={handleGenerate} /> : null}
     </div>
   );
+}
+
+function previewSummary(previewStatus?: string, slotStatus?: string): string {
+  if (previewStatus === "pending") {
+    return "Preview render is queued.";
+  }
+  if (previewStatus === "stitching") {
+    return "Preview render is in progress.";
+  }
+  if (previewStatus === "completed") {
+    return "Preview render completed.";
+  }
+  if (previewStatus === "failed") {
+    return "Preview render failed. Retry is available.";
+  }
+  if (slotStatus === "generated") {
+    return "Generated slot is ready for preview rendering.";
+  }
+  return "Preview rendering becomes available after CAFAI generation succeeds.";
 }

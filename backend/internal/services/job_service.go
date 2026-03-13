@@ -22,6 +22,8 @@ const (
 	internalGenerationBriefRequestIDKey = "generation_brief_request_id"
 	internalGenerationRequestIDKey      = "generation_request_id"
 	internalGenerationPayloadRef        = "generation_payload_ref"
+	internalRenderRequestIDKey          = "render_request_id"
+	internalRenderPayloadRef            = "render_payload_ref"
 )
 
 type JobService struct {
@@ -32,10 +34,15 @@ type JobService struct {
 	jobLogsRepository  *db.JobLogsRepository
 	scenesRepository   *db.ScenesRepository
 	slotsRepository    *db.SlotsRepository
+	previewsRepository *db.PreviewsRepository
 	analysisClient     AnalysisClient
 	openAIClient       OpenAIClient
 	mlClient           MLClient
 	frameExtractor     AnchorFrameExtractor
+	storage            *LocalStorageService
+	blobClient         BlobStorageClient
+	renderClient       RenderClient
+	previewDir         string
 }
 
 func NewJobService(
@@ -46,10 +53,15 @@ func NewJobService(
 	jobLogsRepository *db.JobLogsRepository,
 	scenesRepository *db.ScenesRepository,
 	slotsRepository *db.SlotsRepository,
+	previewsRepository *db.PreviewsRepository,
 	analysisClient AnalysisClient,
 	openAIClient OpenAIClient,
 	mlClient MLClient,
 	frameExtractor AnchorFrameExtractor,
+	storage *LocalStorageService,
+	blobClient BlobStorageClient,
+	renderClient RenderClient,
+	previewDir string,
 ) *JobService {
 	return &JobService{
 		database:           database,
@@ -59,10 +71,15 @@ func NewJobService(
 		jobLogsRepository:  jobLogsRepository,
 		scenesRepository:   scenesRepository,
 		slotsRepository:    slotsRepository,
+		previewsRepository: previewsRepository,
 		analysisClient:     analysisClient,
 		openAIClient:       openAIClient,
 		mlClient:           mlClient,
 		frameExtractor:     frameExtractor,
+		storage:            storage,
+		blobClient:         blobClient,
+		renderClient:       renderClient,
+		previewDir:         previewDir,
 	}
 }
 
@@ -101,6 +118,183 @@ func (s *JobService) ListLogs(ctx context.Context, jobID string) ([]models.JobLo
 		}, err)
 	}
 	return logs, nil
+}
+
+func (s *JobService) GetPreview(ctx context.Context, jobID string) (models.Preview, error) {
+	if _, err := s.jobsRepository.GetByID(ctx, jobID); err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			return models.Preview{}, ResourceNotFound("job not found", map[string]any{
+				"job_id": jobID,
+			}, err)
+		}
+		return models.Preview{}, DatabaseFailure("failed to load job", map[string]any{
+			"job_id": jobID,
+		}, err)
+	}
+
+	preview, err := s.previewsRepository.GetByJobID(ctx, jobID)
+	if errors.Is(err, db.ErrNotFound) {
+		return models.Preview{}, ResourceNotFound("preview not found", map[string]any{
+			"job_id": jobID,
+		}, err)
+	}
+	if err != nil {
+		return models.Preview{}, DatabaseFailure("failed to load preview", map[string]any{
+			"job_id": jobID,
+		}, err)
+	}
+
+	return sanitizePreview(preview), nil
+}
+
+func (s *JobService) StartPreviewRender(ctx context.Context, jobID, slotID string) (models.Job, models.Preview, error) {
+	tx, err := s.database.BeginTx(ctx, nil)
+	if err != nil {
+		return models.Job{}, models.Preview{}, DatabaseFailure("failed to start preview render transaction", map[string]any{
+			"job_id":  jobID,
+			"slot_id": slotID,
+		}, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	jobRepo := db.NewJobsRepository(tx)
+	slotRepo := db.NewSlotsRepository(tx)
+	previewRepo := db.NewPreviewsRepository(tx)
+	logRepo := db.NewJobLogsRepository(tx)
+
+	job, err := jobRepo.GetByID(ctx, jobID)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			return models.Job{}, models.Preview{}, ResourceNotFound("job not found", map[string]any{
+				"job_id": jobID,
+			}, err)
+		}
+		return models.Job{}, models.Preview{}, DatabaseFailure("failed to load job", map[string]any{
+			"job_id": jobID,
+		}, err)
+	}
+
+	slot, err := slotRepo.GetByID(ctx, jobID, slotID)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			return models.Job{}, models.Preview{}, ResourceNotFound("slot not found", map[string]any{
+				"job_id":  jobID,
+				"slot_id": slotID,
+			}, err)
+		}
+		return models.Job{}, models.Preview{}, DatabaseFailure("failed to load slot", map[string]any{
+			"job_id":  jobID,
+			"slot_id": slotID,
+		}, err)
+	}
+	if job.SelectedSlotID == nil || *job.SelectedSlotID != slotID {
+		return models.Job{}, models.Preview{}, Conflict(constants.ErrorCodeInvalidRequest, "preview render can only start for the selected slot", map[string]any{
+			"job_id":           jobID,
+			"slot_id":          slotID,
+			"selected_slot_id": job.SelectedSlotID,
+		})
+	}
+	if slot.Status != constants.SlotStatusGenerated {
+		return models.Job{}, models.Preview{}, Conflict(constants.ErrorCodeInvalidRequest, "preview render requires a generated slot", map[string]any{
+			"job_id":      jobID,
+			"slot_id":     slotID,
+			"slot_status": slot.Status,
+		})
+	}
+	if slot.GeneratedClipPath == nil || strings.TrimSpace(*slot.GeneratedClipPath) == "" {
+		return models.Job{}, models.Preview{}, Conflict(constants.ErrorCodeInvalidRequest, "generated slot is missing clip output", map[string]any{
+			"job_id":  jobID,
+			"slot_id": slotID,
+		})
+	}
+
+	now := TimestampNow()
+	previewID := NewPrefixedID("preview")
+	preview := models.Preview{
+		ID:               previewID,
+		JobID:            jobID,
+		SlotID:           slotID,
+		Status:           "pending",
+		CreatedAt:        now,
+		ArtifactManifest: models.Metadata{},
+		RenderMetrics:    models.Metadata{},
+	}
+
+	existingPreview, previewErr := previewRepo.GetByJobID(ctx, jobID)
+	switch {
+	case previewErr == nil:
+		preview.ID = existingPreview.ID
+		preview.CreatedAt = existingPreview.CreatedAt
+		preview.RenderRetryCount = existingPreview.RenderRetryCount
+		preview.ArtifactManifest = cloneMetadata(existingPreview.ArtifactManifest)
+		if preview.ArtifactManifest == nil {
+			preview.ArtifactManifest = models.Metadata{}
+		}
+		if existingPreview.Status == "completed" {
+			return models.Job{}, models.Preview{}, Conflict(constants.ErrorCodeInvalidRequest, "preview has already been completed for this job", map[string]any{
+				"job_id": jobID,
+			})
+		}
+		if existingPreview.Status != "failed" && existingPreview.Status != "pending" && existingPreview.Status != "stitching" {
+			return models.Job{}, models.Preview{}, Conflict(constants.ErrorCodeInvalidRequest, "preview render cannot start from the current preview state", map[string]any{
+				"job_id":         jobID,
+				"preview_status": existingPreview.Status,
+			})
+		}
+	case errors.Is(previewErr, db.ErrNotFound):
+	default:
+		return models.Job{}, models.Preview{}, DatabaseFailure("failed to load preview", map[string]any{
+			"job_id": jobID,
+		}, previewErr)
+	}
+
+	if err := previewRepo.UpsertPending(ctx, preview); err != nil {
+		return models.Job{}, models.Preview{}, DatabaseFailure("failed to persist preview state", map[string]any{
+			"job_id":  jobID,
+			"slot_id": slotID,
+		}, err)
+	}
+
+	job.Metadata = ensureJobMetadata(job.Metadata)
+	delete(job.Metadata, internalRenderRequestIDKey)
+	delete(job.Metadata, internalRenderPayloadRef)
+	job.Status = constants.JobStatusStitching
+	job.CurrentStage = constants.StageRenderSubmit
+	job.ProgressPercent = 80
+	job.ErrorCode = nil
+	job.ErrorMessage = nil
+	job.CompletedAt = nil
+	if err := jobRepo.UpdateState(ctx, job); err != nil {
+		return models.Job{}, models.Preview{}, DatabaseFailure("failed to update job preview state", map[string]any{
+			"job_id":  jobID,
+			"slot_id": slotID,
+		}, err)
+	}
+	if err := logRepo.Insert(ctx, models.JobLog{
+		JobID:     job.ID,
+		Timestamp: now,
+		EventType: "stage_started",
+		StageName: constants.StageRenderSubmit,
+		Message:   "preview render started",
+	}); err != nil {
+		return models.Job{}, models.Preview{}, DatabaseFailure("failed to write preview start log", map[string]any{
+			"job_id":  jobID,
+			"slot_id": slotID,
+		}, err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return models.Job{}, models.Preview{}, DatabaseFailure("failed to commit preview start", map[string]any{
+			"job_id":  jobID,
+			"slot_id": slotID,
+		}, err)
+	}
+
+	refreshedPreview, err := s.GetPreview(ctx, jobID)
+	if err != nil {
+		return models.Job{}, models.Preview{}, err
+	}
+	return sanitizeJob(job), refreshedPreview, nil
 }
 
 func (s *JobService) StartAnalysis(ctx context.Context, jobID string) (models.Job, error) {
@@ -558,6 +752,26 @@ func (s *JobService) ProcessPendingAnalysis(ctx context.Context) error {
 		}
 	}
 
+	renderSubmissionJobs, err := s.jobsRepository.ListByStatusAndStage(ctx, constants.JobStatusStitching, constants.StageRenderSubmit)
+	if err != nil {
+		return err
+	}
+	for _, job := range renderSubmissionJobs {
+		if err := s.processRenderSubmission(ctx, job); err != nil {
+			return err
+		}
+	}
+
+	renderPollJobs, err := s.jobsRepository.ListByStatusAndStage(ctx, constants.JobStatusStitching, constants.StageRenderPoll)
+	if err != nil {
+		return err
+	}
+	for _, job := range renderPollJobs {
+		if err := s.processRenderPoll(ctx, job); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -968,8 +1182,17 @@ func sanitizeJob(job models.Job) models.Job {
 	delete(job.Metadata, internalGenerationBriefRequestIDKey)
 	delete(job.Metadata, internalGenerationRequestIDKey)
 	delete(job.Metadata, internalGenerationPayloadRef)
+	delete(job.Metadata, internalRenderRequestIDKey)
+	delete(job.Metadata, internalRenderPayloadRef)
 	job.Metadata = ensureJobMetadata(job.Metadata)
 	return job
+}
+
+func sanitizePreview(preview models.Preview) models.Preview {
+	if preview.OutputVideoPath != "" {
+		preview.DownloadPath = fmt.Sprintf("/api/jobs/%s/preview/download", preview.JobID)
+	}
+	return preview
 }
 
 func ensureJobMetadata(metadata models.Metadata) models.Metadata {

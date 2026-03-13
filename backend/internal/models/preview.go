@@ -8,6 +8,9 @@ type Preview struct {
 	OutputVideoPath  string   `json:"output_video_path,omitempty"`
 	DownloadPath     string   `json:"download_path,omitempty"`
 	DurationSeconds  float64  `json:"duration_seconds,omitempty"`
+	RenderRetryCount int      `json:"render_retry_count,omitempty"`
+	ErrorCode        *string  `json:"error_code"`
+	ErrorMessage     *string  `json:"error_message"`
 	CreatedAt        string   `json:"created_at,omitempty"`
 	CompletedAt      *string  `json:"completed_at"`
 	ArtifactManifest Metadata `json:"artifact_manifest,omitempty"`

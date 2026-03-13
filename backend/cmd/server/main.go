@@ -61,6 +61,11 @@ func main() {
 		logger.Error("configure phase 3 Azure clients", "error", err)
 		os.Exit(1)
 	}
+	blobClient, renderClient, err := services.NewPhaseFourClients(cfg, logger)
+	if err != nil {
+		logger.Error("configure phase 4 Azure clients", "error", err)
+		os.Exit(1)
+	}
 	jobService := services.NewJobService(
 		sqliteDB,
 		db.NewJobsRepository(sqliteDB),
@@ -69,10 +74,15 @@ func main() {
 		db.NewJobLogsRepository(sqliteDB),
 		db.NewScenesRepository(sqliteDB),
 		db.NewSlotsRepository(sqliteDB),
+		db.NewPreviewsRepository(sqliteDB),
 		analysisClient,
 		openAIClient,
 		mlClient,
 		services.NewFFmpegAnchorFrameExtractor(cfg.ArtifactsDir),
+		services.NewLocalStorageService(),
+		blobClient,
+		renderClient,
+		cfg.PreviewsDir,
 	)
 
 	processor := worker.NewProcessor(logger, cfg.WorkerInterval)
@@ -92,8 +102,8 @@ func main() {
 		MLClient:             mlClient,
 		AnchorFrameExtractor: services.NewFFmpegAnchorFrameExtractor(cfg.ArtifactsDir),
 		SpeechClient:         services.NewNoopSpeechClient(logger),
-		BlobClient:           services.NewNoopBlobStorageClient(logger),
-		RenderClient:         services.NewNoopRenderClient(logger),
+		BlobClient:           blobClient,
+		RenderClient:         renderClient,
 		CafaiGenerator:       services.NewNoopCafaiGenerator(logger),
 	})
 

@@ -94,10 +94,25 @@ func (i *MediaInspector) ValidatePhaseOneVideo(info MediaInfo) error {
 	if !strings.Contains(info.FormatName, "mp4") || info.VideoCodec != "h264" {
 		return fmt.Errorf("unsupported video format: format=%s codec=%s", info.FormatName, info.VideoCodec)
 	}
-	if info.DurationSeconds < 600 || info.DurationSeconds > 1200 {
-		return fmt.Errorf("unsupported video duration: %.3f", info.DurationSeconds)
+	if _, err := i.ClassifyCampaignVideoProfile(info); err != nil {
+		return err
 	}
 	return nil
+}
+
+func (i *MediaInspector) ClassifyCampaignVideoProfile(info MediaInfo) (string, error) {
+	if !strings.Contains(info.FormatName, "mp4") || info.VideoCodec != "h264" {
+		return "", fmt.Errorf("unsupported video format: format=%s codec=%s", info.FormatName, info.VideoCodec)
+	}
+
+	switch {
+	case info.DurationSeconds >= 40 && info.DurationSeconds <= 60:
+		return "MVP_BASELINE_TEST_PROFILE", nil
+	case info.DurationSeconds >= 600 && info.DurationSeconds <= 1200:
+		return "MVP_FULL_PROFILE", nil
+	default:
+		return "", fmt.Errorf("unsupported video duration: %.3f", info.DurationSeconds)
+	}
 }
 
 func parseFrameRate(value string) (float64, error) {

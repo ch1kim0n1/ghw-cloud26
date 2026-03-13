@@ -56,14 +56,44 @@ describe("App", () => {
     expect(screen.getByText(/Job dashboard test-job/)).toBeInTheDocument();
   });
 
-  it("does not expose a preview route in the phase 0-3 dashboard", () => {
+  it("renders the preview page route", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/api/health")) {
+          return {
+            ok: true,
+            json: async () => ({
+              status: "healthy",
+              timestamp: "2026-03-13T00:00:00Z",
+              version: "0.1.0-mvp",
+            }),
+          } as Response;
+        }
+        return {
+          ok: false,
+          status: 404,
+          json: async () => ({
+            error: "preview not found",
+            error_code: "RESOURCE_NOT_FOUND",
+          }),
+        } as Response;
+      }),
+    );
+
     render(
-      <MemoryRouter initialEntries={["/preview/test-job"]}>
+      <MemoryRouter initialEntries={["/jobs/test-job/preview"]}>
         <App />
       </MemoryRouter>,
     );
 
-    expect(screen.queryByText(/Preview scaffold test-job/)).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText(/Preview status test-job/)).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(screen.getByText("No preview has been started yet.")).toBeInTheDocument();
+    });
   });
 
   it("shows an error state when health fails", async () => {

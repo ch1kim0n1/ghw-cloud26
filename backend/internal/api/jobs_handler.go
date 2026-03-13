@@ -44,6 +44,14 @@ func newJobService(deps Dependencies) *services.JobService {
 	if frameExtractor == nil {
 		frameExtractor = services.NewFFmpegAnchorFrameExtractor(deps.Config.ArtifactsDir)
 	}
+	blobClient := deps.BlobClient
+	if blobClient == nil {
+		blobClient = services.NewNoopBlobStorageClient(deps.Logger)
+	}
+	renderClient := deps.RenderClient
+	if renderClient == nil {
+		renderClient = services.NewNoopRenderClient(deps.Logger)
+	}
 
 	return services.NewJobService(
 		deps.DB,
@@ -53,9 +61,14 @@ func newJobService(deps Dependencies) *services.JobService {
 		db.NewJobLogsRepository(deps.DB),
 		db.NewScenesRepository(deps.DB),
 		db.NewSlotsRepository(deps.DB),
+		db.NewPreviewsRepository(deps.DB),
 		deps.AnalysisClient,
 		deps.OpenAIClient,
 		deps.MLClient,
 		frameExtractor,
+		services.NewLocalStorageService(),
+		blobClient,
+		renderClient,
+		deps.Config.PreviewsDir,
 	)
 }

@@ -116,9 +116,10 @@ func (s *CampaignService) Create(ctx context.Context, input CreateCampaignInput)
 			"format": mediaInfo.FormatName,
 		})
 	}
-	if mediaInfo.DurationSeconds < 600 || mediaInfo.DurationSeconds > 1200 {
+	inputProfile, profileErr := s.inspector.ClassifyCampaignVideoProfile(mediaInfo)
+	if profileErr != nil {
 		_ = s.storage.Delete(videoPath)
-		return models.Campaign{}, InvalidRequest(constants.ErrorCodeInvalidVideoLength, "video duration must be between 10 and 20 minutes", map[string]any{
+		return models.Campaign{}, InvalidRequest(constants.ErrorCodeInvalidVideoLength, "video duration must be between 40 and 60 seconds for the baseline profile or between 10 and 20 minutes for the full MVP path", map[string]any{
 			"duration_seconds": mediaInfo.DurationSeconds,
 		})
 	}
@@ -198,6 +199,7 @@ func (s *CampaignService) Create(ctx context.Context, input CreateCampaignInput)
 		Metadata: models.Metadata{
 			"source_fps":        mediaInfo.SourceFPS,
 			"duration_seconds":  mediaInfo.DurationSeconds,
+			"input_profile":     inputProfile,
 			"rejected_slot_ids": []string{},
 			"top_slot_ids":      []string{},
 		},

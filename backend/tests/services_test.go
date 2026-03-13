@@ -57,14 +57,22 @@ func TestNoopClientsReturnPlaceholderError(t *testing.T) {
 		{
 			name: "blob",
 			run: func() error {
-				_, err := services.NewNoopBlobStorageClient(logger).Upload(context.Background(), services.BlobUploadRequest{JobID: "job_1"})
+				client := services.NewNoopBlobStorageClient(logger)
+				if _, err := client.Upload(context.Background(), services.BlobUploadRequest{JobID: "job_1"}); err != nil {
+					return err
+				}
+				_, err := client.Download(context.Background(), services.BlobDownloadRequest{JobID: "job_1", BlobURI: "https://example.com/blob.mp4"})
 				return err
 			},
 		},
 		{
 			name: "render",
 			run: func() error {
-				_, err := services.NewNoopRenderClient(logger).SubmitRender(context.Background(), services.RenderRequest{JobID: "job_1"})
+				client := services.NewNoopRenderClient(logger)
+				if _, err := client.SubmitRender(context.Background(), services.RenderRequest{JobID: "job_1"}); err != nil {
+					return err
+				}
+				_, err := client.PollRender(context.Background(), services.RenderPollRequest{JobID: "job_1", SlotID: "slot_1", RequestID: "req_1"})
 				return err
 			},
 		},
@@ -210,5 +218,46 @@ func TestNewPhaseThreeClientReturnsAzureClientWhenConfigured(t *testing.T) {
 	}
 	if client == nil {
 		t.Fatal("expected Azure ML client to be created")
+	}
+}
+
+func TestNewPhaseFourClientsRequiresCompleteConfig(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	_, _, err := services.NewPhaseFourClients(config.Config{}, logger)
+	if err == nil {
+		t.Fatal("expected configuration error, got nil")
+	}
+
+	message := err.Error()
+	for _, expected := range []string{
+		"phase 4 rendering is enabled by design",
+		"AZURE_BLOB_URL",
+		"AZURE_BLOB_CONTAINER",
+		"AZURE_BLOB_SAS_TOKEN",
+		"AZURE_RENDER_URL",
+		"AZURE_RENDER_API_KEY",
+	} {
+		if !strings.Contains(message, expected) {
+			t.Fatalf("expected error to mention %q, got %q", expected, message)
+		}
+	}
+}
+
+func TestNewPhaseFourClientsReturnAzureClientsWhenConfigured(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	blobClient, renderClient, err := services.NewPhaseFourClients(config.Config{
+		AzureBlobURL:       "https://blob.example.com",
+		AzureBlobContainer: "cafai",
+		AzureBlobSASToken:  "sv=test&sig=test",
+		AzureRenderURL:     "https://render.example.com",
+		AzureRenderAPIKey:  "api-key",
+	}, logger)
+	if err != nil {
+		t.Fatalf("NewPhaseFourClients() error = %v", err)
+	}
+	if blobClient == nil || renderClient == nil {
+		t.Fatal("expected both phase 4 clients to be created")
 	}
 }

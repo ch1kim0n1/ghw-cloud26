@@ -237,5 +237,113 @@ describe("Phase 3 job page", () => {
     await screen.findByText("Generation complete.");
     expect(screen.getByText("tmp/artifacts/job_1/slot_1.mp4")).toBeInTheDocument();
     expect(screen.getByText("stage_completed")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Render preview" })).toBeInTheDocument();
+  });
+
+  it("shows preview open and download actions once rendering completes", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+
+        if (url.includes("/api/jobs/job_2/logs")) {
+          return {
+            ok: true,
+            json: async () => ({ job_id: "job_2", logs: [] }),
+          } as Response;
+        }
+
+        if (url.includes("/api/jobs/job_2/slots")) {
+          return {
+            ok: true,
+            json: async () => ({
+              job_id: "job_2",
+              slots: [
+                {
+                  id: "slot_1",
+                  rank: 1,
+                  scene_id: "scene_1",
+                  anchor_start_frame: 120,
+                  anchor_end_frame: 121,
+                  source_fps: 24,
+                  quiet_window_seconds: 4.2,
+                  score: 0.91,
+                  reasoning: "top ranked candidate",
+                  status: "generated",
+                  generated_clip_path: "tmp/artifacts/job_2/slot_1.mp4",
+                },
+              ],
+            }),
+          } as Response;
+        }
+
+        if (url.includes("/api/jobs/job_2/preview")) {
+          return {
+            ok: true,
+            json: async () => ({
+              id: "preview_1",
+              job_id: "job_2",
+              slot_id: "slot_1",
+              status: "completed",
+              output_video_path: "tmp/previews/job_2_preview.mp4",
+              download_path: "/api/jobs/job_2/preview/download",
+              duration_seconds: 906,
+              render_retry_count: 0,
+              created_at: "2026-03-13T00:00:00Z",
+              completed_at: "2026-03-13T00:05:00Z",
+              artifact_manifest: {},
+              render_metrics: {},
+            }),
+          } as Response;
+        }
+
+        if (url.includes("/api/jobs/job_2")) {
+          return {
+            ok: true,
+            json: async () => ({
+              id: "job_2",
+              campaign_id: "camp_2",
+              status: "completed",
+              current_stage: "render_poll",
+              progress_percent: 100,
+              selected_slot_id: "slot_1",
+              error_message: null,
+              error_code: null,
+              created_at: "2026-03-13T00:00:00Z",
+              started_at: "2026-03-13T00:01:00Z",
+              completed_at: "2026-03-13T00:05:00Z",
+              metadata: {
+                source_fps: 24,
+                duration_seconds: 900,
+                repick_count: 0,
+                rejected_slot_ids: [],
+                top_slot_ids: [],
+              },
+            }),
+          } as Response;
+        }
+
+        return {
+          ok: false,
+          status: 404,
+          json: async () => ({ error: "not found", error_code: "RESOURCE_NOT_FOUND" }),
+        } as Response;
+      }),
+    );
+
+    render(
+      <MemoryRouter initialEntries={["/jobs/job_2"]}>
+        <Routes>
+          <Route path="/jobs/:jobId" element={<JobPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Preview status: completed")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open preview" })).toHaveAttribute("href", "/jobs/job_2/preview");
+    expect(screen.getByRole("link", { name: "Download preview" })).toHaveAttribute(
+      "href",
+      "http://localhost:8080/api/jobs/job_2/preview/download",
+    );
   });
 });

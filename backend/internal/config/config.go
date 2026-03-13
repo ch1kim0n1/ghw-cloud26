@@ -34,7 +34,10 @@ type Config struct {
 	AzureMLURL                   string
 	AzureSpeechURL               string
 	AzureBlobURL                 string
+	AzureBlobContainer           string
+	AzureBlobSASToken            string
 	AzureRenderURL               string
+	AzureRenderAPIKey            string
 }
 
 func Load() (Config, error) {
@@ -67,7 +70,10 @@ func Load() (Config, error) {
 		AzureMLURL:                   os.Getenv("AZURE_ML_URL"),
 		AzureSpeechURL:               os.Getenv("AZURE_SPEECH_URL"),
 		AzureBlobURL:                 os.Getenv("AZURE_BLOB_URL"),
+		AzureBlobContainer:           os.Getenv("AZURE_BLOB_CONTAINER"),
+		AzureBlobSASToken:            os.Getenv("AZURE_BLOB_SAS_TOKEN"),
 		AzureRenderURL:               os.Getenv("AZURE_RENDER_URL"),
+		AzureRenderAPIKey:            os.Getenv("AZURE_RENDER_API_KEY"),
 	}, nil
 }
 
