@@ -18,7 +18,7 @@ The product strategy is:
 - Context-Aware Fused Ad Insertion (CAFAI)
 
 The MVP goal is:
-- analyze a provided H.264 MP4
+- analyze a provided H.264 MP4.
 - propose valid insertion slots automatically
 - let the operator choose a slot and optionally edit the generated product line
 - generate a short context-aware bridge clip
