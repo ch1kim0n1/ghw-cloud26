@@ -52,6 +52,7 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 	mux.HandleFunc("POST /api/jobs/{job_id}/start-analysis", analysis)
 	mux.HandleFunc("GET /api/jobs/{job_id}/slots", slots)
 	mux.HandleFunc("GET /api/jobs/{job_id}/slots/{slot_id}", slots)
+	mux.HandleFunc("POST /api/jobs/{job_id}/slots/manual-select", slots)
 	mux.HandleFunc("POST /api/jobs/{job_id}/slots/{slot_id}/select", slots)
 	mux.HandleFunc("POST /api/jobs/{job_id}/slots/{slot_id}/reject", slots)
 	mux.HandleFunc("POST /api/jobs/{job_id}/slots/re-pick", slots)

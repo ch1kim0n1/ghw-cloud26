@@ -139,6 +139,7 @@ func (c *AzureVideoIndexerClient) PollAnalysis(ctx context.Context, req Analysis
 			Status:     "completed",
 			Scenes:     scenes,
 			PayloadRef: req.RequestID,
+			Metadata:   extractVideoIndexerMetadata(payload),
 		}, nil
 	case "failed", "error":
 		return AnalysisPollResponse{
@@ -250,6 +251,23 @@ func extractVideoIndexerScenes(payload map[string]any, jobID string, sourceFPS f
 	}
 
 	return scenes
+}
+
+func extractVideoIndexerMetadata(payload map[string]any) models.Metadata {
+	metadata := models.Metadata{}
+	language := firstNonEmptyString(
+		stringValue(payload["sourceLanguage"]),
+		stringValue(payload["language"]),
+		stringValue(nestedValue(firstVideo(payload), "insights", "sourceLanguage")),
+		stringValue(nestedValue(firstVideo(payload), "insights", "language")),
+	)
+	if language == "" {
+		return metadata
+	}
+	metadata["content_language"] = language
+	metadata["language_detection_source"] = "azure_video_indexer"
+	metadata["language_confidence"] = 0.95
+	return metadata
 }
 
 func firstVideo(payload map[string]any) map[string]any {

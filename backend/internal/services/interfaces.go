@@ -33,6 +33,7 @@ type AnalysisPollResponse struct {
 	Scenes     []models.Scene
 	PayloadRef string
 	Message    string
+	Metadata   models.Metadata
 }
 
 type OpenAIRequest struct {
@@ -72,6 +73,7 @@ type GenerationRequest struct {
 	SuggestedProductLine    string
 	FinalProductLine        string
 	GenerationBrief         string
+	ContentLanguage         string
 	SelectedSlotReasoning   string
 	SelectedSlotQuietWindow float64
 }
@@ -93,8 +95,9 @@ type GenerationPollRequest struct {
 }
 
 type SpeechRequest struct {
-	JobID string
-	Text  string
+	JobID    string
+	Text     string
+	Language string
 }
 
 type SpeechResponse struct {

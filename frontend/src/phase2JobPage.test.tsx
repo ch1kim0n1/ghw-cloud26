@@ -346,4 +346,134 @@ describe("Phase 3 job page", () => {
       "http://localhost:8080/api/jobs/job_2/preview/download",
     );
   });
+
+  it("shows manual selection controls when no auto slot is available", async () => {
+    const state: {
+      job: Record<string, unknown>;
+      slots: Array<Record<string, unknown>>;
+      logs: Array<Record<string, unknown>>;
+    } = {
+      job: {
+        id: "job_3",
+        campaign_id: "camp_3",
+        status: "analyzing",
+        current_stage: "slot_selection",
+        progress_percent: 40,
+        selected_slot_id: null,
+        error_message: "no suitable auto slot found; manual selection available",
+        error_code: "NO_SUITABLE_SLOT_FOUND",
+        created_at: "2026-03-13T00:00:00Z",
+        started_at: "2026-03-13T00:01:00Z",
+        completed_at: null,
+        metadata: {
+          source_fps: 24,
+          duration_seconds: 900,
+          content_language: "ru",
+          repick_count: 0,
+          rejected_slot_ids: [],
+          top_slot_ids: [],
+        },
+      },
+      slots: [],
+      logs: [],
+    };
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+
+        if (url.includes("/api/jobs/job_3/slots/manual-select") && init?.method === "POST") {
+          state.job = {
+            ...state.job,
+            current_stage: "line_review",
+            error_message: null,
+            error_code: null,
+            selected_slot_id: "slot_manual",
+          };
+          state.slots = [
+            {
+              id: "slot_manual",
+              rank: 0,
+              scene_id: "scene_1",
+              anchor_start_frame: 48,
+              anchor_end_frame: 144,
+              source_fps: 24,
+              quiet_window_seconds: 4,
+              score: 0.61,
+              reasoning: "manual selection by operator",
+              status: "selected",
+              suggested_product_line: "Я возьму эту бутылку на секунду.",
+              metadata: {
+                manual: true,
+                manual_start_seconds: 2,
+                manual_end_seconds: 6,
+              },
+            },
+          ];
+
+          return {
+            ok: true,
+            json: async () => ({
+              job_id: "job_3",
+              slot_id: "slot_manual",
+              status: "analyzing",
+              current_stage: "line_review",
+              slot_status: "selected",
+              suggested_product_line: "Я возьму эту бутылку на секунду.",
+              manual: true,
+              message: "manual slot selected and product line prepared",
+            }),
+          } as Response;
+        }
+
+        if (url.includes("/api/jobs/job_3/logs")) {
+          return {
+            ok: true,
+            json: async () => ({ job_id: "job_3", logs: state.logs }),
+          } as Response;
+        }
+
+        if (url.includes("/api/jobs/job_3/slots")) {
+          return {
+            ok: true,
+            json: async () => ({ job_id: "job_3", slots: state.slots }),
+          } as Response;
+        }
+
+        if (url.includes("/api/jobs/job_3")) {
+          return {
+            ok: true,
+            json: async () => state.job,
+          } as Response;
+        }
+
+        return {
+          ok: false,
+          status: 404,
+          json: async () => ({ error: "not found", error_code: "RESOURCE_NOT_FOUND" }),
+        } as Response;
+      }),
+    );
+
+    render(
+      <MemoryRouter initialEntries={["/jobs/job_3"]}>
+        <Routes>
+          <Route path="/jobs/:jobId" element={<JobPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await screen.findByText("Detected content language: RU");
+    expect(
+      screen.getByText("Automatic ranking found no suitable slot. Manual selection is the primary recovery path."),
+    ).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Start seconds"), { target: { value: "2" } });
+    fireEvent.change(screen.getByLabelText("End seconds"), { target: { value: "6" } });
+    fireEvent.click(screen.getByRole("button", { name: "Select manual slot" }));
+
+    await screen.findByText("Product Line Review");
+    expect(screen.getByDisplayValue("Я возьму эту бутылку на секунду.")).toBeInTheDocument();
+  });
 });

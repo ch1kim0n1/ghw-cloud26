@@ -9,7 +9,7 @@ import { usePreview } from "../hooks/usePreview";
 import { useSlots } from "../hooks/useSlots";
 import { startAnalysis } from "../services/analysisApi";
 import { getPreviewDownloadUrl, renderPreview } from "../services/previewApi";
-import { generateSlot, rejectSlot, repickSlots, selectSlot } from "../services/slotsApi";
+import { generateSlot, manualSelectSlot, rejectSlot, repickSlots, selectSlot } from "../services/slotsApi";
 import { ApiError } from "../types/Api";
 import type { Job } from "../types/Job";
 import type { Slot } from "../types/Slot";
@@ -35,6 +35,9 @@ export function JobPage() {
   const [repickPending, setRepickPending] = useState(false);
   const [generatePending, setGeneratePending] = useState(false);
   const [renderPending, setRenderPending] = useState(false);
+  const [manualStartSeconds, setManualStartSeconds] = useState("");
+  const [manualEndSeconds, setManualEndSeconds] = useState("");
+  const [manualSelectPending, setManualSelectPending] = useState(false);
   const [jobPollingEnabled, setJobPollingEnabled] = useState(Boolean(jobId));
 
   const { job, error: jobError, loading: jobLoading, refresh: refreshJob } = useJob(jobId, {
@@ -73,6 +76,9 @@ export function JobPage() {
     job?.current_stage === "slot_selection" && slots.length > 0 && slots.every((slot) => slot.status === "rejected");
   const canStartAnalysis = Boolean(job && job.status === "queued" && job.current_stage === "ready_for_analysis");
   const canSelectSlots = Boolean(job && job.status === "analyzing" && job.current_stage === "slot_selection");
+  const noAutoSlotFound = job?.error_code === "NO_SUITABLE_SLOT_FOUND";
+  const detectedContentLanguage =
+    typeof job?.metadata?.content_language === "string" ? job.metadata.content_language : "en";
 
   async function refreshAll() {
     refreshJob();
@@ -228,6 +234,42 @@ export function JobPage() {
     }
   }
 
+  async function handleManualSelect() {
+    if (!jobId) {
+      return;
+    }
+
+    const startSeconds = Number(manualStartSeconds);
+    const endSeconds = Number(manualEndSeconds);
+    if (!Number.isFinite(startSeconds) || !Number.isFinite(endSeconds)) {
+      setActionError("Manual slot selection requires numeric start and end times.");
+      return;
+    }
+
+    setActionError(null);
+    setActionMessage(null);
+    setManualSelectPending(true);
+
+    try {
+      const response = await manualSelectSlot(jobId, {
+        start_seconds: startSeconds,
+        end_seconds: endSeconds,
+      });
+      setActionMessage(String(response.message ?? "manual slot selected and product line prepared"));
+      setManualStartSeconds("");
+      setManualEndSeconds("");
+      await refreshAll();
+    } catch (reason: unknown) {
+      if (reason instanceof ApiError) {
+        setActionError(reason.message);
+      } else {
+        setActionError("Unable to select a manual slot.");
+      }
+    } finally {
+      setManualSelectPending(false);
+    }
+  }
+
   const canRenderPreview = Boolean(
     selectedSlot &&
     selectedSlot.status === "generated" &&
@@ -254,6 +296,7 @@ export function JobPage() {
           <span>{slotsLoading ? "Loading slots..." : slotsError ?? `${slots.length} slot(s)`}</span>
           <span>{logsLoading ? "Loading logs..." : logsError ?? `${logs.length} log entry(ies)`}</span>
         </div>
+        <p>Detected content language: {detectedContentLanguage.toUpperCase()}</p>
         {actionError ? <p className="form-message form-message--error">{actionError}</p> : null}
         {actionMessage ? <p className="form-message form-message--success">{actionMessage}</p> : null}
       </section>
@@ -339,6 +382,50 @@ export function JobPage() {
           </div>
         </div>
         {slotsError ? <p className="form-message form-message--error">{slotsError}</p> : null}
+        {canSelectSlots ? (
+          <section className="card">
+            <div className="list-block__header">
+              <div>
+                <p className="eyebrow">Manual override</p>
+                <h3>Pick a slot by time</h3>
+              </div>
+            </div>
+            <p className="muted">
+              {noAutoSlotFound
+                ? "Automatic ranking found no suitable slot. Manual selection is the primary recovery path."
+                : "Use manual selection when you want to override the automatic slot proposals."}
+            </p>
+            <div className="form-grid">
+              <div className="field-row">
+                <label className="field">
+                  <span>Start seconds</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    value={manualStartSeconds}
+                    onChange={(event) => setManualStartSeconds(event.target.value)}
+                  />
+                </label>
+                <label className="field">
+                  <span>End seconds</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    value={manualEndSeconds}
+                    onChange={(event) => setManualEndSeconds(event.target.value)}
+                  />
+                </label>
+              </div>
+              <div className="form-actions">
+                <button type="button" onClick={handleManualSelect} disabled={manualSelectPending}>
+                  {manualSelectPending ? "Selecting..." : "Select manual slot"}
+                </button>
+              </div>
+            </div>
+          </section>
+        ) : null}
         {!slotsLoading && slots.length === 0 ? <p>No slots available yet.</p> : null}
         <div className="card-grid">
           {slots.map((slot) => (

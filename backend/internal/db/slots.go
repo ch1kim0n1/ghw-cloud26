@@ -66,6 +66,69 @@ func (r *SlotsRepository) ReplaceForJob(ctx context.Context, jobID string, slots
 	return nil
 }
 
+func (r *SlotsRepository) Upsert(ctx context.Context, slot models.Slot) error {
+	metadataJSON, err := json.Marshal(slot.Metadata)
+	if err != nil {
+		return fmt.Errorf("marshal slot metadata for %s: %w", slot.ID, err)
+	}
+
+	_, err = r.db.ExecContext(ctx, `
+		INSERT INTO slots (
+			id, job_id, scene_id, rank, anchor_start_frame, anchor_end_frame, quiet_window_seconds, score, context_relevance_score, narrative_fit_score, anchor_continuity_score, reasoning, status, suggested_product_line, final_product_line, product_line_mode, rejection_note, generated_clip_path, generated_audio_path, generation_error, metadata_json, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			scene_id = excluded.scene_id,
+			rank = excluded.rank,
+			anchor_start_frame = excluded.anchor_start_frame,
+			anchor_end_frame = excluded.anchor_end_frame,
+			quiet_window_seconds = excluded.quiet_window_seconds,
+			score = excluded.score,
+			context_relevance_score = excluded.context_relevance_score,
+			narrative_fit_score = excluded.narrative_fit_score,
+			anchor_continuity_score = excluded.anchor_continuity_score,
+			reasoning = excluded.reasoning,
+			status = excluded.status,
+			suggested_product_line = excluded.suggested_product_line,
+			final_product_line = excluded.final_product_line,
+			product_line_mode = excluded.product_line_mode,
+			rejection_note = excluded.rejection_note,
+			generated_clip_path = excluded.generated_clip_path,
+			generated_audio_path = excluded.generated_audio_path,
+			generation_error = excluded.generation_error,
+			metadata_json = excluded.metadata_json,
+			updated_at = excluded.updated_at
+	`,
+		slot.ID,
+		slot.JobID,
+		slot.SceneID,
+		slot.Rank,
+		slot.AnchorStartFrame,
+		slot.AnchorEndFrame,
+		slot.QuietWindowSeconds,
+		slot.Score,
+		slot.ContextRelevanceScore,
+		slot.NarrativeFitScore,
+		slot.AnchorContinuityScore,
+		slot.Reasoning,
+		slot.Status,
+		slot.SuggestedProductLine,
+		slot.FinalProductLine,
+		slot.ProductLineMode,
+		rejectionNoteFromMetadata(slot.Metadata),
+		slot.GeneratedClipPath,
+		slot.GeneratedAudioPath,
+		slot.GenerationError,
+		string(metadataJSON),
+		slot.CreatedAt,
+		slot.UpdatedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert slot %s: %w", slot.ID, err)
+	}
+
+	return nil
+}
+
 func (r *SlotsRepository) ListByJobID(ctx context.Context, jobID string) ([]models.Slot, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT

@@ -618,43 +618,24 @@ func (s *JobService) RequestRepick(ctx context.Context, jobID string) (models.Jo
 	}
 	if len(slots) == 0 {
 		job.Metadata["top_slot_ids"] = []string{}
-		job.ProgressPercent = 40
+		errorCode := constants.ErrorCodeNoSuitableSlot
+		errorMessage := "no suitable auto slot found; manual selection available"
+		job.Status = constants.JobStatusAnalyzing
 		job.CurrentStage = constants.StageSlotSelection
-		if nextRepickCount >= 2 {
-			errorCode := constants.ErrorCodeNoSuitableSlot
-			errorMessage := "no suitable slot found after re-pick attempts"
-			completedAt := TimestampNow()
-			job.Status = constants.JobStatusFailed
-			job.ErrorCode = &errorCode
-			job.ErrorMessage = &errorMessage
-			job.CompletedAt = &completedAt
-			if err := logRepo.Insert(ctx, models.JobLog{
-				JobID:     jobID,
-				Timestamp: TimestampNow(),
-				EventType: "job_failed",
-				StageName: constants.StageSlotSelection,
-				Message:   "no suitable slot found after re-pick attempts",
-			}); err != nil {
-				return models.Job{}, DatabaseFailure("failed to write failure log", map[string]any{
-					"job_id": jobID,
-				}, err)
-			}
-		} else {
-			job.Status = constants.JobStatusAnalyzing
-			job.ErrorCode = nil
-			job.ErrorMessage = nil
-			job.CompletedAt = nil
-			if err := logRepo.Insert(ctx, models.JobLog{
-				JobID:     jobID,
-				Timestamp: TimestampNow(),
-				EventType: "repick_requested",
-				StageName: constants.StageSlotSelection,
-				Message:   "re-pick requested but no additional valid slots were found",
-			}); err != nil {
-				return models.Job{}, DatabaseFailure("failed to write re-pick log", map[string]any{
-					"job_id": jobID,
-				}, err)
-			}
+		job.ProgressPercent = 40
+		job.ErrorCode = &errorCode
+		job.ErrorMessage = &errorMessage
+		job.CompletedAt = nil
+		if err := logRepo.Insert(ctx, models.JobLog{
+			JobID:     jobID,
+			Timestamp: TimestampNow(),
+			EventType: "repick_requested",
+			StageName: constants.StageSlotSelection,
+			Message:   "re-pick requested but no additional auto slots were found; manual selection remains available",
+		}); err != nil {
+			return models.Job{}, DatabaseFailure("failed to write re-pick log", map[string]any{
+				"job_id": jobID,
+			}, err)
 		}
 		if err := jobRepo.UpdateState(ctx, job); err != nil {
 			return models.Job{}, DatabaseFailure("failed to update job after re-pick", map[string]any{
@@ -902,6 +883,10 @@ func (s *JobService) persistCompletedAnalysis(ctx context.Context, job models.Jo
 	if rankingRequestID != "" {
 		current.Metadata[internalSlotRankingRequestIDKey] = rankingRequestID
 	}
+	contentLanguage, detectionSource, detectionConfidence := detectContentLanguage(response, scenes)
+	current.Metadata["content_language"] = contentLanguage
+	current.Metadata["language_detection_source"] = detectionSource
+	current.Metadata["language_confidence"] = roundScore(detectionConfidence)
 
 	if err := sceneRepo.ReplaceForJob(ctx, current.ID, scenes); err != nil {
 		return err
@@ -910,23 +895,22 @@ func (s *JobService) persistCompletedAnalysis(ctx context.Context, job models.Jo
 	if len(slots) == 0 {
 		current.Metadata["top_slot_ids"] = []string{}
 		errorCode := constants.ErrorCodeNoSuitableSlot
-		errorMessage := "no suitable slot found"
-		completedAt := TimestampNow()
-		current.Status = constants.JobStatusFailed
+		errorMessage := "no suitable auto slot found; manual selection available"
+		current.Status = constants.JobStatusAnalyzing
 		current.CurrentStage = constants.StageSlotSelection
 		current.ProgressPercent = 40
 		current.ErrorCode = &errorCode
 		current.ErrorMessage = &errorMessage
-		current.CompletedAt = &completedAt
+		current.CompletedAt = nil
 		if err := jobRepo.UpdateState(ctx, current); err != nil {
 			return err
 		}
 		if err := logRepo.Insert(ctx, models.JobLog{
 			JobID:     current.ID,
 			Timestamp: TimestampNow(),
-			EventType: "job_failed",
+			EventType: "stage_completed",
 			StageName: constants.StageSlotSelection,
-			Message:   "no suitable slot found",
+			Message:   "analysis complete but no suitable auto slot was found; manual selection available",
 		}); err != nil {
 			return err
 		}
@@ -1074,6 +1058,7 @@ func rankSlots(jobID string, sourceFPS float64, product models.Product, scenes [
 }
 
 func rankSceneCandidate(jobID string, sourceFPS float64, product models.Product, scene models.Scene, timestamp string) (models.Slot, bool) {
+	thresholds := defaultSlotRankingThresholds()
 	motionScore := clamp01(floatValue(scene.MotionScore, 0.2))
 	stabilityScore := clamp01(floatValue(scene.StabilityScore, 0.6))
 	dialogueScore := clamp01(floatValue(scene.DialogueActivityScore, 0.3))
@@ -1082,7 +1067,11 @@ func rankSceneCandidate(jobID string, sourceFPS float64, product models.Product,
 	abruptCutRisk := clamp01(floatValue(scene.AbruptCutRisk, 0.1))
 	sceneDuration := scene.EndSeconds - scene.StartSeconds
 
-	if motionScore > 0.65 || actionIntensity > 0.70 || abruptCutRisk > 0.70 || sceneDuration < 10 || quietWindowSeconds < 3 {
+	if motionScore > thresholds.MotionScoreMax ||
+		actionIntensity > thresholds.ActionIntensityScoreMax ||
+		abruptCutRisk > thresholds.AnchorCutConfidenceMax ||
+		sceneDuration < thresholds.SceneDurationSecondsMin ||
+		quietWindowSeconds < thresholds.QuietWindowSecondsMin {
 		return models.Slot{}, false
 	}
 
@@ -1110,9 +1099,9 @@ func rankSceneCandidate(jobID string, sourceFPS float64, product models.Product,
 
 	quietWindowScore := clamp01(quietWindowSeconds / 3)
 	contextRelevanceScore := scoreContextRelevance(product, scene)
-	narrativeFitScore := clamp01((1-dialogueScore)*0.45 + quietWindowScore*0.25 + contextRelevanceScore*0.20 + (1-actionIntensity)*0.10)
+	narrativeFitScore := clamp01((1-dialogueScore)*0.50 + quietWindowScore*0.30 + (1-actionIntensity)*0.20)
 	anchorContinuityScore := clamp01(stabilityScore*0.40 + (1-motionScore)*0.35 + (1-abruptCutRisk)*0.25)
-	slotScore := stabilityScore*0.30 + quietWindowScore*0.25 + contextRelevanceScore*0.20 + narrativeFitScore*0.15 + anchorContinuityScore*0.10
+	slotScore := stabilityScore*0.35 + quietWindowScore*0.25 + narrativeFitScore*0.20 + anchorContinuityScore*0.15 + contextRelevanceScore*0.05
 
 	slotID := fmt.Sprintf("slot_%s_%s_%d_%d", jobID, scene.ID, anchorStartFrame, anchorEndFrame)
 	reasoning := fmt.Sprintf(
@@ -1219,6 +1208,9 @@ func ensureJobMetadata(metadata models.Metadata) models.Metadata {
 	}
 	if _, ok := clean["repick_count"]; !ok {
 		clean["repick_count"] = 0
+	}
+	if _, ok := clean["content_language"]; !ok {
+		clean["content_language"] = "en"
 	}
 	return clean
 }
@@ -1339,7 +1331,26 @@ func appendUnique(values []string, candidate string) []string {
 }
 
 func tokenize(value string) []string {
-	replacer := strings.NewReplacer(",", " ", ".", " ", "/", " ", "-", " ", "_", " ", ":", " ", ";", " ", "(", " ", ")", " ")
+	replacer := strings.NewReplacer(
+		",", " ",
+		".", " ",
+		"/", " ",
+		"-", " ",
+		"–", " ",
+		"—", " ",
+		"_", " ",
+		":", " ",
+		";", " ",
+		"(", " ",
+		")", " ",
+		"«", " ",
+		"»", " ",
+		"“", " ",
+		"”", " ",
+		"‘", " ",
+		"’", " ",
+		"\"", " ",
+	)
 	normalized := replacer.Replace(strings.ToLower(value))
 	parts := strings.Fields(normalized)
 	results := make([]string, 0, len(parts))
@@ -1350,6 +1361,77 @@ func tokenize(value string) []string {
 		results = append(results, part)
 	}
 	return results
+}
+
+func detectContentLanguage(response AnalysisPollResponse, scenes []models.Scene) (string, string, float64) {
+	if response.Metadata != nil {
+		if language := strings.TrimSpace(stringValue(response.Metadata["content_language"])); language != "" {
+			confidence := 0.95
+			if parsedConfidence := metadataFloat(response.Metadata, "language_confidence"); parsedConfidence > 0 {
+				confidence = parsedConfidence
+			}
+			source := strings.TrimSpace(stringValue(response.Metadata["language_detection_source"]))
+			if source == "" {
+				source = "provider_metadata"
+			}
+			return normalizeContentLanguage(language), source, confidence
+		}
+	}
+	return detectContentLanguageFromScenesDetailed(scenes)
+}
+
+func detectContentLanguageFromScenes(scenes []models.Scene) string {
+	language, _, _ := detectContentLanguageFromScenesDetailed(scenes)
+	return language
+}
+
+func detectContentLanguageFromScenesDetailed(scenes []models.Scene) (string, string, float64) {
+	var builder strings.Builder
+	for _, scene := range scenes {
+		if scene.NarrativeSummary != "" {
+			builder.WriteString(scene.NarrativeSummary)
+			builder.WriteByte(' ')
+		}
+		for _, keyword := range scene.ContextKeywords {
+			builder.WriteString(keyword)
+			builder.WriteByte(' ')
+		}
+	}
+
+	text := builder.String()
+	if text == "" {
+		return "en", "heuristic_empty", 0.51
+	}
+
+	var cyrillicCount int
+	var latinCount int
+	for _, r := range text {
+		switch {
+		case r >= 0x0400 && r <= 0x04FF:
+			cyrillicCount++
+		case (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z'):
+			latinCount++
+		}
+	}
+
+	total := cyrillicCount + latinCount
+	if total == 0 {
+		return "en", "heuristic_no_script", 0.51
+	}
+	if cyrillicCount >= 4 && cyrillicCount >= latinCount {
+		return "ru", "transcript_heuristic", clamp01(float64(cyrillicCount) / float64(total))
+	}
+	return "en", "transcript_heuristic", clamp01(float64(latinCount) / float64(total))
+}
+
+func normalizeContentLanguage(language string) string {
+	trimmed := strings.ToLower(strings.TrimSpace(language))
+	switch {
+	case strings.HasPrefix(trimmed, "ru"), strings.Contains(trimmed, "russian"):
+		return "ru"
+	default:
+		return "en"
+	}
 }
 
 func clamp01(value float64) float64 {

@@ -42,6 +42,30 @@ type slotCandidate struct {
 	Metadata                         models.Metadata `json:"metadata"`
 }
 
+type slotRankingThresholds struct {
+	MotionScoreMax                 float64
+	AnchorBoundaryMotionScoreMax   float64
+	ActionIntensityScoreMax        float64
+	MaxSubwindowActionIntensityMax float64
+	ShotBoundaryDistanceSecondsMin float64
+	AnchorCutConfidenceMax         float64
+	SceneDurationSecondsMin        float64
+	QuietWindowSecondsMin          float64
+}
+
+func defaultSlotRankingThresholds() slotRankingThresholds {
+	return slotRankingThresholds{
+		MotionScoreMax:                 0.75,
+		AnchorBoundaryMotionScoreMax:   0.85,
+		ActionIntensityScoreMax:        0.85,
+		MaxSubwindowActionIntensityMax: 0.90,
+		ShotBoundaryDistanceSecondsMin: 0.25,
+		AnchorCutConfidenceMax:         0.80,
+		SceneDurationSecondsMin:        6,
+		QuietWindowSecondsMin:          1.5,
+	}
+}
+
 func (s *JobService) rankSlotsWithOpenAI(ctx context.Context, jobID string, sourceFPS float64, product models.Product, scenes []models.Scene, rejectedSlotIDs []string) ([]models.Slot, string, error) {
 	requestPayload, err := buildSlotRankingPrompt(jobID, sourceFPS, product, scenes, rejectedSlotIDs)
 	if err != nil {
@@ -65,24 +89,30 @@ func (s *JobService) rankSlotsWithOpenAI(ctx context.Context, jobID string, sour
 	}
 
 	slots := buildRankedSlots(jobID, sourceFPS, product, scenes, rejectedSlotIDs, candidates)
+	if len(slots) == 0 {
+		slots = rankSlots(jobID, sourceFPS, product, scenes, rejectedSlotIDs)
+	}
 	return slots, response.RequestID, nil
 }
 
 func buildSlotRankingPrompt(jobID string, sourceFPS float64, product models.Product, scenes []models.Scene, rejectedSlotIDs []string) (string, error) {
+	thresholds := defaultSlotRankingThresholds()
+	contentLanguage := detectContentLanguageFromScenes(scenes)
 	payload := map[string]any{
 		"job_id":            jobID,
 		"source_fps":        sourceFPS,
+		"content_language":  contentLanguage,
 		"product":           product,
 		"rejected_slot_ids": rejectedSlotIDs,
 		"exclusion_thresholds": map[string]any{
-			"motion_score_max":                   0.65,
-			"anchor_boundary_motion_score_max":   0.75,
-			"action_intensity_score_max":         0.70,
-			"max_subwindow_action_intensity_max": 0.80,
-			"shot_boundary_distance_seconds_min": 0.50,
-			"anchor_cut_confidence_max":          0.70,
-			"scene_duration_seconds_min":         10,
-			"quiet_window_seconds_min":           3,
+			"motion_score_max":                   thresholds.MotionScoreMax,
+			"anchor_boundary_motion_score_max":   thresholds.AnchorBoundaryMotionScoreMax,
+			"action_intensity_score_max":         thresholds.ActionIntensityScoreMax,
+			"max_subwindow_action_intensity_max": thresholds.MaxSubwindowActionIntensityMax,
+			"shot_boundary_distance_seconds_min": thresholds.ShotBoundaryDistanceSecondsMin,
+			"anchor_cut_confidence_max":          thresholds.AnchorCutConfidenceMax,
+			"scene_duration_seconds_min":         thresholds.SceneDurationSecondsMin,
+			"quiet_window_seconds_min":           thresholds.QuietWindowSecondsMin,
 		},
 		"scenes": scenes,
 	}
@@ -99,7 +129,11 @@ func slotRankingSystemPrompt() string {
 		"Return strict JSON with a top-level candidates array.",
 		"Each candidate must include scene_id, anchor_start_frame, anchor_end_frame, quiet_window_seconds, reasoning, context_relevance_score, narrative_fit_score, anchor_continuity_score, quiet_window_score, motion_score, start_boundary_motion_score, end_boundary_motion_score, action_intensity_score, max_subwindow_action_intensity, shot_boundary_distance_start_seconds, shot_boundary_distance_end_seconds, start_cut_confidence, end_cut_confidence, stability_score, dialogue_activity_score, and metadata.",
 		"Propose anchor-frame pairs inside the provided scene bounds.",
-		"Prefer low-motion, quiet, context-relevant scenes and do not repeat previously rejected slot ids.",
+		"Physical continuity and low-disruption insertion are the primary goal.",
+		"Weak product-context matching must not disqualify a physically valid slot.",
+		"Culturally or narratively unexpected product placement is allowed if the insertion remains visually plausible.",
+		"Prefer low-motion, quiet scenes and do not repeat previously rejected slot ids.",
+		"Keep the candidate reasoning concise and in English.",
 		"Do not wrap the JSON in markdown code fences.",
 	}, " ")
 }
@@ -175,6 +209,7 @@ func buildRankedSlots(jobID string, sourceFPS float64, product models.Product, s
 }
 
 func buildSlotFromCandidate(jobID string, sourceFPS float64, product models.Product, scene models.Scene, candidate slotCandidate, timestamp string) (models.Slot, bool) {
+	thresholds := defaultSlotRankingThresholds()
 	if sourceFPS <= 0 {
 		sourceFPS = 24
 	}
@@ -193,17 +228,17 @@ func buildSlotFromCandidate(jobID string, sourceFPS float64, product models.Prod
 	endBoundaryDistance := firstPositive(candidate.ShotBoundaryDistanceEndSeconds, float64(scene.EndFrame-candidate.AnchorEndFrame)/sourceFPS)
 	startCutConfidence := clamp01(firstPositive(candidate.StartCutConfidence, floatValue(scene.AbruptCutRisk, 0)))
 	endCutConfidence := clamp01(firstPositive(candidate.EndCutConfidence, floatValue(scene.AbruptCutRisk, 0)))
-	if motionScore > 0.65 ||
-		startBoundaryMotion > 0.75 ||
-		endBoundaryMotion > 0.75 ||
-		actionIntensity > 0.70 ||
-		maxSubwindowAction > 0.80 ||
-		startBoundaryDistance <= 0.5 ||
-		endBoundaryDistance <= 0.5 ||
-		startCutConfidence > 0.70 ||
-		endCutConfidence > 0.70 ||
-		sceneDuration < 10 ||
-		quietWindowSeconds < 3 {
+	if motionScore > thresholds.MotionScoreMax ||
+		startBoundaryMotion > thresholds.AnchorBoundaryMotionScoreMax ||
+		endBoundaryMotion > thresholds.AnchorBoundaryMotionScoreMax ||
+		actionIntensity > thresholds.ActionIntensityScoreMax ||
+		maxSubwindowAction > thresholds.MaxSubwindowActionIntensityMax ||
+		startBoundaryDistance <= thresholds.ShotBoundaryDistanceSecondsMin ||
+		endBoundaryDistance <= thresholds.ShotBoundaryDistanceSecondsMin ||
+		startCutConfidence > thresholds.AnchorCutConfidenceMax ||
+		endCutConfidence > thresholds.AnchorCutConfidenceMax ||
+		sceneDuration < thresholds.SceneDurationSecondsMin ||
+		quietWindowSeconds < thresholds.QuietWindowSecondsMin {
 		return models.Slot{}, false
 	}
 
@@ -211,9 +246,9 @@ func buildSlotFromCandidate(jobID string, sourceFPS float64, product models.Prod
 	quietWindowScore := clamp01(firstPositive(candidate.QuietWindowScore, quietWindowSeconds/3))
 	contextRelevanceScore := clamp01(firstPositive(candidate.ContextRelevanceScore, scoreContextRelevance(product, scene)))
 	dialogueScore := clamp01(firstPositive(candidate.DialogueActivityScore, floatValue(scene.DialogueActivityScore, 0)))
-	narrativeFitScore := clamp01(firstPositive(candidate.NarrativeFitScore, (1-dialogueScore)*0.45+quietWindowScore*0.25+contextRelevanceScore*0.20+(1-actionIntensity)*0.10))
+	narrativeFitScore := clamp01(firstPositive(candidate.NarrativeFitScore, (1-dialogueScore)*0.50+quietWindowScore*0.30+(1-actionIntensity)*0.20))
 	anchorContinuityScore := clamp01(firstPositive(candidate.AnchorContinuityScore, stabilityScore*0.40+(1-maxFloat(startBoundaryMotion, endBoundaryMotion))*0.35+(1-maxFloat(startCutConfidence, endCutConfidence))*0.25))
-	slotScore := stabilityScore*0.30 + quietWindowScore*0.25 + contextRelevanceScore*0.20 + narrativeFitScore*0.15 + anchorContinuityScore*0.10
+	slotScore := stabilityScore*0.35 + quietWindowScore*0.25 + narrativeFitScore*0.20 + anchorContinuityScore*0.15 + contextRelevanceScore*0.05
 
 	reasoning := strings.TrimSpace(candidate.Reasoning)
 	if reasoning == "" {

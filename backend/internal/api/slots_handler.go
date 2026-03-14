@@ -31,6 +31,30 @@ func newSlotsHandler(deps Dependencies) http.HandlerFunc {
 				return
 			}
 			writeJSON(w, http.StatusOK, slot)
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/manual-select"):
+			var payload struct {
+				StartSeconds float64 `json:"start_seconds"`
+				EndSeconds   float64 `json:"end_seconds"`
+			}
+			if r.Body != nil {
+				_ = json.NewDecoder(r.Body).Decode(&payload)
+			}
+
+			job, slot, err := service.SelectManualSlot(r.Context(), jobID, payload.StartSeconds, payload.EndSeconds)
+			if err != nil {
+				writeServiceError(w, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{
+				"job_id":                 job.ID,
+				"slot_id":                slot.ID,
+				"status":                 job.Status,
+				"current_stage":          job.CurrentStage,
+				"slot_status":            slot.Status,
+				"suggested_product_line": slot.SuggestedProductLine,
+				"manual":                 true,
+				"message":                "manual slot selected and product line prepared",
+			})
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/reject"):
 			var payload struct {
 				Note string `json:"note"`

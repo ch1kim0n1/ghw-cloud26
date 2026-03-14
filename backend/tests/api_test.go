@@ -1194,11 +1194,57 @@ func TestPhaseTwoProviderFailureMarksJobFailed(t *testing.T) {
 	}
 }
 
-func TestPhaseTwoNoSuitableSlotsMarksJobFailed(t *testing.T) {
+func TestPhaseTwoFallbackRankingReturnsSlotsWhenLLMOutputIsInvalid(t *testing.T) {
+	client := &fakeAnalysisClient{
+		submitRequestID: "req_fallback",
+		pollResponses: []services.AnalysisPollResponse{
+			{RequestID: "req_fallback", Status: "completed", Scenes: validAnalysisScenes()},
+		},
+	}
+	openAIClient := &fakeOpenAIClient{responseContent: invalidSlotRankingContent()}
+	env := newAPIEnvWithPhaseTwoClients(t, client, openAIClient)
+	product := insertProductFixture(t, env.database, "mismatched camera")
+	_, job := insertCampaignJobFixture(t, env.database, product.ID, "fallback")
+
+	startRec := env.serve(http.MethodPost, "/api/jobs/"+job.ID+"/start-analysis", nil, "")
+	if startRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", startRec.Code, startRec.Body.String())
+	}
+	if err := env.jobService.ProcessPendingAnalysis(context.Background()); err != nil {
+		t.Fatalf("ProcessPendingAnalysis() error = %v", err)
+	}
+
+	slotsRec := env.serve(http.MethodGet, "/api/jobs/"+job.ID+"/slots", nil, "")
+	if slotsRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", slotsRec.Code, slotsRec.Body.String())
+	}
+	var slotsPayload struct {
+		Slots []models.Slot `json:"slots"`
+	}
+	decodeJSON(t, slotsRec.Body.Bytes(), &slotsPayload)
+	if len(slotsPayload.Slots) == 0 {
+		t.Fatal("expected deterministic fallback ranking to return slots")
+	}
+
+	jobRec := env.serve(http.MethodGet, "/api/jobs/"+job.ID, nil, "")
+	if jobRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", jobRec.Code, jobRec.Body.String())
+	}
+	var current models.Job
+	decodeJSON(t, jobRec.Body.Bytes(), &current)
+	if current.Status != constants.JobStatusAnalyzing {
+		t.Fatalf("expected analyzing job, got %s", current.Status)
+	}
+	if current.ErrorCode != nil {
+		t.Fatalf("expected no job error, got %#v", current.ErrorCode)
+	}
+}
+
+func TestPhaseTwoNoSuitableSlotsLeavesManualSelectionAvailable(t *testing.T) {
 	client := &fakeAnalysisClient{
 		submitRequestID: "req_none",
 		pollResponses: []services.AnalysisPollResponse{
-			{RequestID: "req_none", Status: "completed", Scenes: validAnalysisScenes()},
+			{RequestID: "req_none", Status: "completed", Scenes: noValidAnalysisScenes()},
 		},
 	}
 	openAIClient := &fakeOpenAIClient{responseContent: invalidSlotRankingContent()}
@@ -1218,13 +1264,197 @@ func TestPhaseTwoNoSuitableSlotsMarksJobFailed(t *testing.T) {
 	if jobRec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", jobRec.Code, jobRec.Body.String())
 	}
-	var failed models.Job
-	decodeJSON(t, jobRec.Body.Bytes(), &failed)
-	if failed.Status != constants.JobStatusFailed {
-		t.Fatalf("expected failed job, got %s", failed.Status)
+	var current models.Job
+	decodeJSON(t, jobRec.Body.Bytes(), &current)
+	if current.Status != constants.JobStatusAnalyzing {
+		t.Fatalf("expected analyzing job, got %s", current.Status)
 	}
-	if failed.ErrorCode == nil || *failed.ErrorCode != constants.ErrorCodeNoSuitableSlot {
-		t.Fatalf("expected no suitable slot code, got %#v", failed.ErrorCode)
+	if current.CurrentStage != constants.StageSlotSelection {
+		t.Fatalf("expected slot_selection stage, got %s", current.CurrentStage)
+	}
+	if current.ErrorCode == nil || *current.ErrorCode != constants.ErrorCodeNoSuitableSlot {
+		t.Fatalf("expected no suitable slot code, got %#v", current.ErrorCode)
+	}
+	if current.CompletedAt != nil {
+		t.Fatalf("expected completed_at to stay nil, got %#v", current.CompletedAt)
+	}
+
+	slotsRec := env.serve(http.MethodGet, "/api/jobs/"+job.ID+"/slots", nil, "")
+	if slotsRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", slotsRec.Code, slotsRec.Body.String())
+	}
+	var slotsPayload struct {
+		Slots []models.Slot `json:"slots"`
+	}
+	decodeJSON(t, slotsRec.Body.Bytes(), &slotsPayload)
+	if len(slotsPayload.Slots) != 0 {
+		t.Fatalf("expected no auto slots, got %d", len(slotsPayload.Slots))
+	}
+}
+
+func TestPhaseThreeManualSlotSelectionFromNoAutoSlotState(t *testing.T) {
+	client := &fakeAnalysisClient{
+		submitRequestID: "req_manual",
+		pollResponses: []services.AnalysisPollResponse{
+			{RequestID: "req_manual", Status: "completed", Scenes: noValidAnalysisScenes()},
+		},
+	}
+	openAIClient := &fakeOpenAIClient{
+		responses: []string{
+			invalidSlotRankingContent(),
+			`{"suggested_product_line":"I will pick this up for a second."}`,
+		},
+	}
+	env := newAPIEnvWithPhaseTwoClients(t, client, openAIClient)
+	product := insertProductFixture(t, env.database, "manual product")
+	_, job := insertCampaignJobFixture(t, env.database, product.ID, "manual")
+
+	startRec := env.serve(http.MethodPost, "/api/jobs/"+job.ID+"/start-analysis", nil, "")
+	if startRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", startRec.Code, startRec.Body.String())
+	}
+	if err := env.jobService.ProcessPendingAnalysis(context.Background()); err != nil {
+		t.Fatalf("ProcessPendingAnalysis() error = %v", err)
+	}
+
+	manualRec := env.serve(http.MethodPost, "/api/jobs/"+job.ID+"/slots/manual-select", []byte(`{"start_seconds":2,"end_seconds":6}`), "application/json")
+	if manualRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", manualRec.Code, manualRec.Body.String())
+	}
+
+	var manualPayload map[string]any
+	decodeJSON(t, manualRec.Body.Bytes(), &manualPayload)
+	if manualPayload["manual"] != true {
+		t.Fatalf("expected manual flag in response, got %#v", manualPayload["manual"])
+	}
+
+	jobRec := env.serve(http.MethodGet, "/api/jobs/"+job.ID, nil, "")
+	var current models.Job
+	decodeJSON(t, jobRec.Body.Bytes(), &current)
+	if current.CurrentStage != constants.StageLineReview {
+		t.Fatalf("expected line_review stage, got %s", current.CurrentStage)
+	}
+	if current.SelectedSlotID == nil {
+		t.Fatal("expected selected slot id after manual selection")
+	}
+
+	slotRec := env.serve(http.MethodGet, "/api/jobs/"+job.ID+"/slots/"+*current.SelectedSlotID, nil, "")
+	if slotRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", slotRec.Code, slotRec.Body.String())
+	}
+	var slot models.Slot
+	decodeJSON(t, slotRec.Body.Bytes(), &slot)
+	if slot.Status != constants.SlotStatusSelected {
+		t.Fatalf("expected selected slot, got %s", slot.Status)
+	}
+	if slot.Metadata["manual"] != true {
+		t.Fatalf("expected manual slot metadata, got %#v", slot.Metadata)
+	}
+	if slot.SuggestedProductLine == nil || *slot.SuggestedProductLine == "" {
+		t.Fatal("expected suggested line on manual slot")
+	}
+}
+
+func TestPhaseThreeManualSlotSelectionRejectsCrossSceneRange(t *testing.T) {
+	client := &fakeAnalysisClient{
+		submitRequestID: "req_manual_invalid",
+		pollResponses: []services.AnalysisPollResponse{
+			{RequestID: "req_manual_invalid", Status: "completed", Scenes: noValidAnalysisScenes()},
+		},
+	}
+	openAIClient := &fakeOpenAIClient{responseContent: invalidSlotRankingContent()}
+	env := newAPIEnvWithPhaseTwoClients(t, client, openAIClient)
+	product := insertProductFixture(t, env.database, "manual invalid")
+	_, job := insertCampaignJobFixture(t, env.database, product.ID, "manual_invalid")
+
+	startRec := env.serve(http.MethodPost, "/api/jobs/"+job.ID+"/start-analysis", nil, "")
+	if startRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", startRec.Code, startRec.Body.String())
+	}
+	if err := env.jobService.ProcessPendingAnalysis(context.Background()); err != nil {
+		t.Fatalf("ProcessPendingAnalysis() error = %v", err)
+	}
+
+	manualRec := env.serve(http.MethodPost, "/api/jobs/"+job.ID+"/slots/manual-select", []byte(`{"start_seconds":19,"end_seconds":25}`), "application/json")
+	if manualRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", manualRec.Code, manualRec.Body.String())
+	}
+}
+
+func TestPhaseThreeRussianLanguageFlowsIntoGeneration(t *testing.T) {
+	analysisClient := &fakeAnalysisClient{
+		submitRequestID: "req_ru",
+		pollResponses: []services.AnalysisPollResponse{
+			{RequestID: "req_ru", Status: "completed", Scenes: russianAnalysisScenes()},
+		},
+	}
+	openAIClient := &fakeOpenAIClient{
+		responses: []string{
+			slotRankingContentForSuffix("russian"),
+			`{"suggested_product_line":"Я возьму эту бутылку на секунду."}`,
+			`{"generation_brief":"Короткий мостик: персонаж берет продукт, взаимодействует с ним и возвращается к исходному движению."}`,
+		},
+	}
+	mlClient := &fakeMLClient{
+		submitResponse: services.GenerationResponse{
+			RequestID: "gen_ru",
+			Status:    "submitted",
+		},
+	}
+	env := newAPIEnvWithPhaseThreeClients(t, analysisClient, openAIClient, mlClient, &fakeAnchorFrameExtractor{
+		artifacts: services.AnchorFrameArtifacts{
+			AnchorStartImagePath: "/tmp/start.png",
+			AnchorEndImagePath:   "/tmp/end.png",
+		},
+	})
+	product := insertProductFixture(t, env.database, "russian product")
+	_, job := insertCampaignJobFixture(t, env.database, product.ID, "russian")
+
+	startRec := env.serve(http.MethodPost, "/api/jobs/"+job.ID+"/start-analysis", nil, "")
+	if startRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", startRec.Code, startRec.Body.String())
+	}
+	if err := env.jobService.ProcessPendingAnalysis(context.Background()); err != nil {
+		t.Fatalf("ProcessPendingAnalysis() error = %v", err)
+	}
+
+	jobRec := env.serve(http.MethodGet, "/api/jobs/"+job.ID, nil, "")
+	var analyzed models.Job
+	decodeJSON(t, jobRec.Body.Bytes(), &analyzed)
+	if analyzed.Metadata["content_language"] != "ru" {
+		t.Fatalf("expected content language ru, got %#v", analyzed.Metadata["content_language"])
+	}
+
+	slotsRec := env.serve(http.MethodGet, "/api/jobs/"+job.ID+"/slots", nil, "")
+	var slotsPayload struct {
+		Slots []models.Slot `json:"slots"`
+	}
+	decodeJSON(t, slotsRec.Body.Bytes(), &slotsPayload)
+	if len(slotsPayload.Slots) == 0 {
+		t.Fatal("expected ranked slots")
+	}
+
+	selectRec := env.serve(http.MethodPost, "/api/jobs/"+job.ID+"/slots/"+slotsPayload.Slots[0].ID+"/select", nil, "")
+	if selectRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", selectRec.Code, selectRec.Body.String())
+	}
+
+	generateRec := env.serve(http.MethodPost, "/api/jobs/"+job.ID+"/slots/"+slotsPayload.Slots[0].ID+"/generate", []byte(`{"product_line_mode":"auto"}`), "application/json")
+	if generateRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", generateRec.Code, generateRec.Body.String())
+	}
+	if err := env.jobService.ProcessPendingAnalysis(context.Background()); err != nil {
+		t.Fatalf("ProcessPendingAnalysis() generation submission error = %v", err)
+	}
+
+	if mlClient.lastSubmit.ContentLanguage != "ru" {
+		t.Fatalf("expected ru content language in generation request, got %q", mlClient.lastSubmit.ContentLanguage)
+	}
+	if !strings.Contains(mlClient.lastSubmit.SuggestedProductLine, "Я") {
+		t.Fatalf("expected russian suggested line, got %q", mlClient.lastSubmit.SuggestedProductLine)
+	}
+	if !strings.Contains(mlClient.lastSubmit.GenerationBrief, "Короткий") {
+		t.Fatalf("expected russian generation brief, got %q", mlClient.lastSubmit.GenerationBrief)
 	}
 }
 
@@ -1726,6 +1956,20 @@ func validAnalysisScenes() []models.Scene {
 		sceneFixture(3, 961, 1440, 40, 60, 0.22, 0.82, 0.18, 3.8, "quiet beverage context", []string{"drink", "beverage"}, 0.22, 0.15),
 		sceneFixture(4, 1441, 1920, 60, 80, 0.25, 0.80, 0.20, 3.6, "tabletop refreshment beat", []string{"refreshment", "table", "drink"}, 0.30, 0.18),
 		sceneFixture(5, 1921, 2400, 80, 100, 0.30, 0.78, 0.25, 3.3, "soft product context in room", []string{"water", "room"}, 0.28, 0.20),
+	}
+}
+
+func noValidAnalysisScenes() []models.Scene {
+	return []models.Scene{
+		sceneFixture(1, 0, 480, 0, 20, 0.92, 0.22, 0.70, 0.8, "high motion battlefield footage", []string{"battle", "running"}, 0.94, 0.86),
+		sceneFixture(2, 481, 960, 20, 40, 0.88, 0.28, 0.65, 0.7, "rapid action montage", []string{"explosion", "crowd"}, 0.91, 0.83),
+	}
+}
+
+func russianAnalysisScenes() []models.Scene {
+	return []models.Scene{
+		sceneFixture(1, 0, 480, 0, 20, 0.16, 0.88, 0.20, 4.2, "спокойный разговор на кухне о напитке", []string{"напиток", "кухня", "бутылка"}, 0.18, 0.12),
+		sceneFixture(2, 481, 960, 20, 40, 0.18, 0.84, 0.18, 3.9, "герой берет бутылку со стола и продолжает разговор", []string{"стол", "разговор", "бутылка"}, 0.22, 0.14),
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strings"
 
@@ -102,7 +103,7 @@ func (s *JobService) SelectSlot(ctx context.Context, jobID, slotID string) (mode
 		}, db.ErrNotFound)
 	}
 
-	suggestedLine, requestID, err := s.generateSuggestedProductLine(ctx, job.ID, product, scene, slot)
+	suggestedLine, requestID, err := s.generateSuggestedProductLine(ctx, job.ID, product, scene, slot, metadataString(job.Metadata, "content_language"))
 	if err != nil {
 		return models.Job{}, models.Slot{}, NewAppError(http.StatusInternalServerError, constants.ErrorCodeGenerationFailed, "failed to prepare suggested product line", map[string]any{
 			"job_id":  jobID,
@@ -150,6 +151,216 @@ func (s *JobService) SelectSlot(ctx context.Context, jobID, slotID string) (mode
 
 	if err := tx.Commit(); err != nil {
 		return models.Job{}, models.Slot{}, DatabaseFailure("failed to commit slot selection", map[string]any{
+			"job_id":  jobID,
+			"slot_id": slotID,
+		}, err)
+	}
+
+	refreshedSlot, err := s.GetSlot(ctx, jobID, slotID)
+	if err != nil {
+		return models.Job{}, models.Slot{}, err
+	}
+	return sanitizeJob(job), refreshedSlot, nil
+}
+
+func (s *JobService) SelectManualSlot(ctx context.Context, jobID string, startSeconds, endSeconds float64) (models.Job, models.Slot, error) {
+	tx, err := s.database.BeginTx(ctx, nil)
+	if err != nil {
+		return models.Job{}, models.Slot{}, DatabaseFailure("failed to start manual slot selection transaction", map[string]any{
+			"job_id": jobID,
+		}, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	jobRepo := db.NewJobsRepository(tx)
+	campaignRepo := db.NewCampaignsRepository(tx)
+	productRepo := db.NewProductsRepository(tx)
+	sceneRepo := db.NewScenesRepository(tx)
+	slotRepo := db.NewSlotsRepository(tx)
+	logRepo := db.NewJobLogsRepository(tx)
+
+	job, err := jobRepo.GetByID(ctx, jobID)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			return models.Job{}, models.Slot{}, ResourceNotFound("job not found", map[string]any{
+				"job_id": jobID,
+			}, err)
+		}
+		return models.Job{}, models.Slot{}, DatabaseFailure("failed to load job", map[string]any{
+			"job_id": jobID,
+		}, err)
+	}
+	if job.CurrentStage != constants.StageSlotSelection || job.Status != constants.JobStatusAnalyzing {
+		return models.Job{}, models.Slot{}, Conflict(constants.ErrorCodeInvalidRequest, "job is not in slot selection", map[string]any{
+			"job_id":        jobID,
+			"status":        job.Status,
+			"current_stage": job.CurrentStage,
+		})
+	}
+
+	if startSeconds < 0 || endSeconds <= 0 || endSeconds <= startSeconds {
+		return models.Job{}, models.Slot{}, InvalidRequest(constants.ErrorCodeInvalidRequest, "manual slot selection requires start_seconds < end_seconds within the source video", map[string]any{
+			"job_id":        jobID,
+			"start_seconds": startSeconds,
+			"end_seconds":   endSeconds,
+		})
+	}
+
+	job.Metadata = ensureJobMetadata(job.Metadata)
+	durationSeconds := metadataFloat(job.Metadata, "duration_seconds")
+	if durationSeconds > 0 && endSeconds > durationSeconds {
+		return models.Job{}, models.Slot{}, InvalidRequest(constants.ErrorCodeInvalidRequest, "manual slot selection must fall within the source video duration", map[string]any{
+			"job_id":           jobID,
+			"duration_seconds": durationSeconds,
+			"start_seconds":    startSeconds,
+			"end_seconds":      endSeconds,
+		})
+	}
+
+	campaign, err := campaignRepo.GetByID(ctx, job.CampaignID)
+	if err != nil {
+		return models.Job{}, models.Slot{}, DatabaseFailure("failed to load campaign", map[string]any{
+			"job_id": jobID,
+		}, err)
+	}
+	product, err := productRepo.GetByID(ctx, campaign.ProductID)
+	if err != nil {
+		return models.Job{}, models.Slot{}, DatabaseFailure("failed to load product", map[string]any{
+			"job_id":     jobID,
+			"product_id": campaign.ProductID,
+		}, err)
+	}
+	scenes, err := sceneRepo.ListByJobID(ctx, job.ID)
+	if err != nil {
+		return models.Job{}, models.Slot{}, DatabaseFailure("failed to load scenes", map[string]any{
+			"job_id": jobID,
+		}, err)
+	}
+	scene, ok := findSceneForManualSelection(scenes, startSeconds, endSeconds)
+	if !ok {
+		return models.Job{}, models.Slot{}, InvalidRequest(constants.ErrorCodeInvalidRequest, "manual slot selection must stay inside one analyzed scene", map[string]any{
+			"job_id":        jobID,
+			"start_seconds": startSeconds,
+			"end_seconds":   endSeconds,
+		})
+	}
+
+	sourceFPS := metadataFloat(job.Metadata, "source_fps")
+	if sourceFPS <= 0 {
+		sourceFPS = 24
+	}
+	anchorStartFrame := int(math.Round(startSeconds * sourceFPS))
+	anchorEndFrame := int(math.Round(endSeconds * sourceFPS))
+	if anchorStartFrame < scene.StartFrame {
+		anchorStartFrame = scene.StartFrame
+	}
+	if anchorEndFrame > scene.EndFrame {
+		anchorEndFrame = scene.EndFrame
+	}
+	if anchorEndFrame <= anchorStartFrame {
+		anchorEndFrame = anchorStartFrame + 1
+		if anchorEndFrame > scene.EndFrame {
+			return models.Job{}, models.Slot{}, InvalidRequest(constants.ErrorCodeInvalidRequest, "manual slot selection produced invalid anchor frames for the chosen scene", map[string]any{
+				"job_id":        jobID,
+				"start_seconds": startSeconds,
+				"end_seconds":   endSeconds,
+				"scene_id":      scene.ID,
+			})
+		}
+	}
+
+	quietWindowSeconds := endSeconds - startSeconds
+	contextRelevanceScore := roundScore(scoreContextRelevance(product, scene))
+	motionScore := clamp01(floatValue(scene.MotionScore, 0.2))
+	stabilityScore := clamp01(floatValue(scene.StabilityScore, clamp01(1-motionScore)))
+	dialogueScore := clamp01(floatValue(scene.DialogueActivityScore, 0.3))
+	actionIntensity := clamp01(floatValue(scene.ActionIntensityScore, motionScore))
+	quietWindowScore := clamp01(quietWindowSeconds / 3)
+	narrativeFitScore := roundScore(clamp01((1-dialogueScore)*0.50 + quietWindowScore*0.30 + (1-actionIntensity)*0.20))
+	anchorContinuityScore := roundScore(clamp01(stabilityScore*0.40 + (1-motionScore)*0.35 + (1-clamp01(floatValue(scene.AbruptCutRisk, 0.1)))*0.25))
+	slotScore := roundScore(stabilityScore*0.35 + quietWindowScore*0.25 + float64(narrativeFitScore)*0.20 + float64(anchorContinuityScore)*0.15 + float64(contextRelevanceScore)*0.05)
+
+	slotID := fmt.Sprintf("slot_%s_manual_%d_%d", jobID, int(math.Round(startSeconds*1000)), int(math.Round(endSeconds*1000)))
+	suggestedLine, requestID, err := s.generateSuggestedProductLine(ctx, job.ID, product, scene, models.Slot{
+		ID:                 slotID,
+		JobID:              jobID,
+		SceneID:            scene.ID,
+		AnchorStartFrame:   anchorStartFrame,
+		AnchorEndFrame:     anchorEndFrame,
+		QuietWindowSeconds: quietWindowSeconds,
+		Score:              slotScore,
+		Reasoning:          "manual selection by operator",
+		Status:             constants.SlotStatusSelected,
+	}, metadataString(job.Metadata, "content_language"))
+	if err != nil {
+		return models.Job{}, models.Slot{}, NewAppError(http.StatusInternalServerError, constants.ErrorCodeGenerationFailed, "failed to prepare suggested product line", map[string]any{
+			"job_id": jobID,
+		}, err)
+	}
+
+	now := TimestampNow()
+	manualSlot := models.Slot{
+		ID:                    slotID,
+		JobID:                 jobID,
+		Rank:                  0,
+		SceneID:               scene.ID,
+		AnchorStartFrame:      anchorStartFrame,
+		AnchorEndFrame:        anchorEndFrame,
+		SourceFPS:             sourceFPS,
+		QuietWindowSeconds:    quietWindowSeconds,
+		Score:                 slotScore,
+		Reasoning:             "manual selection by operator",
+		Status:                constants.SlotStatusSelected,
+		SuggestedProductLine:  ptrIfNotEmpty(suggestedLine),
+		ContextRelevanceScore: floatPtr(contextRelevanceScore),
+		NarrativeFitScore:     floatPtr(narrativeFitScore),
+		AnchorContinuityScore: floatPtr(anchorContinuityScore),
+		Metadata: models.Metadata{
+			"manual":               true,
+			"manual_start_seconds": roundScore(startSeconds),
+			"manual_end_seconds":   roundScore(endSeconds),
+		},
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := slotRepo.Upsert(ctx, manualSlot); err != nil {
+		return models.Job{}, models.Slot{}, DatabaseFailure("failed to persist manual slot", map[string]any{
+			"job_id":  jobID,
+			"slot_id": slotID,
+		}, err)
+	}
+
+	if requestID != "" {
+		job.Metadata[internalProductLineRequestIDKey] = requestID
+	}
+	job.Status = constants.JobStatusAnalyzing
+	job.CurrentStage = constants.StageLineReview
+	job.ProgressPercent = 40
+	job.ErrorCode = nil
+	job.ErrorMessage = nil
+	job.CompletedAt = nil
+	job.SelectedSlotID = &slotID
+	if err := jobRepo.UpdateState(ctx, job); err != nil {
+		return models.Job{}, models.Slot{}, DatabaseFailure("failed to update job for manual slot selection", map[string]any{
+			"job_id":  jobID,
+			"slot_id": slotID,
+		}, err)
+	}
+	if err := logRepo.Insert(ctx, models.JobLog{
+		JobID:     job.ID,
+		Timestamp: now,
+		EventType: "slot_selected",
+		StageName: constants.StageLineReview,
+		Message:   "manual slot selected and product line prepared",
+	}); err != nil {
+		return models.Job{}, models.Slot{}, DatabaseFailure("failed to write manual slot selection log", map[string]any{
+			"job_id":  jobID,
+			"slot_id": slotID,
+		}, err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return models.Job{}, models.Slot{}, DatabaseFailure("failed to commit manual slot selection", map[string]any{
 			"job_id":  jobID,
 			"slot_id": slotID,
 		}, err)
@@ -318,7 +529,8 @@ func (s *JobService) processGenerationSubmission(ctx context.Context, job models
 		return s.failGenerationJob(ctx, job, slot.ID, constants.StageGenerationSubmit, "anchor frame extraction failed")
 	}
 
-	generationBrief, generationBriefRequestID, err := s.generateGenerationBrief(ctx, job.ID, product, scene, slot, anchorFrames)
+	contentLanguage := metadataString(job.Metadata, "content_language")
+	generationBrief, generationBriefRequestID, err := s.generateGenerationBrief(ctx, job.ID, product, scene, slot, anchorFrames, contentLanguage)
 	if err != nil {
 		return s.failGenerationJob(ctx, job, slot.ID, constants.StageGenerationSubmit, "generation brief preparation failed")
 	}
@@ -347,6 +559,7 @@ func (s *JobService) processGenerationSubmission(ctx context.Context, job models
 		SuggestedProductLine:    strings.TrimSpace(stringValueOrDefault(slot.SuggestedProductLine)),
 		FinalProductLine:        strings.TrimSpace(stringValueOrDefault(slot.FinalProductLine)),
 		GenerationBrief:         generationBrief,
+		ContentLanguage:         contentLanguage,
 		SelectedSlotReasoning:   slot.Reasoning,
 		SelectedSlotQuietWindow: slot.QuietWindowSeconds,
 	})
@@ -557,8 +770,8 @@ func (s *JobService) failGenerationJob(ctx context.Context, job models.Job, slot
 	return tx.Commit()
 }
 
-func (s *JobService) generateSuggestedProductLine(ctx context.Context, jobID string, product models.Product, scene models.Scene, slot models.Slot) (string, string, error) {
-	prompt, err := buildSuggestedProductLinePrompt(product, scene, slot)
+func (s *JobService) generateSuggestedProductLine(ctx context.Context, jobID string, product models.Product, scene models.Scene, slot models.Slot, contentLanguage string) (string, string, error) {
+	prompt, err := buildSuggestedProductLinePrompt(product, scene, slot, contentLanguage)
 	if err != nil {
 		return "", "", err
 	}
@@ -566,7 +779,7 @@ func (s *JobService) generateSuggestedProductLine(ctx context.Context, jobID str
 	response, err := s.openAIClient.Complete(ctx, OpenAIRequest{
 		JobID:        jobID,
 		Purpose:      "phase_3_product_line",
-		SystemPrompt: suggestedProductLineSystemPrompt(),
+		SystemPrompt: suggestedProductLineSystemPrompt(contentLanguage),
 		Prompt:       prompt,
 		Temperature:  0.4,
 	})
@@ -581,8 +794,8 @@ func (s *JobService) generateSuggestedProductLine(ctx context.Context, jobID str
 	return line, response.RequestID, nil
 }
 
-func (s *JobService) generateGenerationBrief(ctx context.Context, jobID string, product models.Product, scene models.Scene, slot models.Slot, anchors AnchorFrameArtifacts) (string, string, error) {
-	prompt, err := buildGenerationBriefPrompt(product, scene, slot, anchors)
+func (s *JobService) generateGenerationBrief(ctx context.Context, jobID string, product models.Product, scene models.Scene, slot models.Slot, anchors AnchorFrameArtifacts, contentLanguage string) (string, string, error) {
+	prompt, err := buildGenerationBriefPrompt(product, scene, slot, anchors, contentLanguage)
 	if err != nil {
 		return "", "", err
 	}
@@ -590,7 +803,7 @@ func (s *JobService) generateGenerationBrief(ctx context.Context, jobID string, 
 	response, err := s.openAIClient.Complete(ctx, OpenAIRequest{
 		JobID:        jobID,
 		Purpose:      "phase_3_generation_brief",
-		SystemPrompt: generationBriefSystemPrompt(),
+		SystemPrompt: generationBriefSystemPrompt(contentLanguage),
 		Prompt:       prompt,
 		Temperature:  0.2,
 	})
@@ -605,8 +818,9 @@ func (s *JobService) generateGenerationBrief(ctx context.Context, jobID string, 
 	return brief, response.RequestID, nil
 }
 
-func buildSuggestedProductLinePrompt(product models.Product, scene models.Scene, slot models.Slot) (string, error) {
+func buildSuggestedProductLinePrompt(product models.Product, scene models.Scene, slot models.Slot, contentLanguage string) (string, error) {
 	payload := map[string]any{
+		"content_language": normalizeContentLanguage(contentLanguage),
 		"product": map[string]any{
 			"name":             product.Name,
 			"description":      product.Description,
@@ -641,8 +855,9 @@ func buildSuggestedProductLinePrompt(product models.Product, scene models.Scene,
 	return string(body), nil
 }
 
-func buildGenerationBriefPrompt(product models.Product, scene models.Scene, slot models.Slot, anchors AnchorFrameArtifacts) (string, error) {
+func buildGenerationBriefPrompt(product models.Product, scene models.Scene, slot models.Slot, anchors AnchorFrameArtifacts, contentLanguage string) (string, error) {
 	payload := map[string]any{
+		"content_language": normalizeContentLanguage(contentLanguage),
 		"product": map[string]any{
 			"name":             product.Name,
 			"description":      product.Description,
@@ -686,22 +901,24 @@ func buildGenerationBriefPrompt(product models.Product, scene models.Scene, slot
 	return string(body), nil
 }
 
-func suggestedProductLineSystemPrompt() string {
+func suggestedProductLineSystemPrompt(contentLanguage string) string {
 	return strings.Join([]string{
 		"You are preparing one short suggested product mention for a CAFAI insertion moment.",
 		"Return strict JSON with the top-level key suggested_product_line.",
 		"Write one natural line that could plausibly be spoken in the scene.",
+		fmt.Sprintf("Write the spoken line in %s.", normalizeContentLanguage(contentLanguage)),
 		"Keep the wording concise and conversational, never salesy.",
 		"Do not wrap the JSON in markdown code fences.",
 	}, " ")
 }
 
-func generationBriefSystemPrompt() string {
+func generationBriefSystemPrompt(contentLanguage string) string {
 	return strings.Join([]string{
 		"You are preparing a CAFAI generation brief for Azure Machine Learning.",
 		"Return strict JSON with the top-level key generation_brief.",
 		"Describe a concise 5-8 second bridge clip that starts from the start anchor image, introduces the product naturally, and resolves into the end anchor image.",
 		"Reference the selected product line mode and spoken line when present.",
+		fmt.Sprintf("Write the generation brief in %s so it matches the source content language.", normalizeContentLanguage(contentLanguage)),
 		"Do not wrap the JSON in markdown code fences.",
 	}, " ")
 }
@@ -785,6 +1002,15 @@ func resolveFinalProductLine(slot models.Slot, productLineMode, customProductLin
 func findSceneByID(scenes []models.Scene, sceneID string) (models.Scene, bool) {
 	for _, scene := range scenes {
 		if scene.ID == sceneID {
+			return scene, true
+		}
+	}
+	return models.Scene{}, false
+}
+
+func findSceneForManualSelection(scenes []models.Scene, startSeconds, endSeconds float64) (models.Scene, bool) {
+	for _, scene := range scenes {
+		if startSeconds >= scene.StartSeconds && endSeconds <= scene.EndSeconds {
 			return scene, true
 		}
 	}

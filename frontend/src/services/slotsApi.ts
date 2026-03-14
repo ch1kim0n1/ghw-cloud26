@@ -15,6 +15,19 @@ export function selectSlot(jobId: string, slotId: string): Promise<Record<string
   });
 }
 
+export function manualSelectSlot(
+  jobId: string,
+  payload: { start_seconds: number; end_seconds: number },
+): Promise<Record<string, unknown>> {
+  return request(`/api/jobs/${jobId}/slots/manual-select`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
 export function rejectSlot(jobId: string, slotId: string, note?: string): Promise<Record<string, unknown>> {
   return request(`/api/jobs/${jobId}/slots/${slotId}/reject`, {
     method: "POST",
