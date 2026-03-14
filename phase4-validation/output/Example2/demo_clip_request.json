@@ -1,0 +1,15 @@
+{
+  "example_id": "Example2",
+  "source_video_path": "/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/input/Example2/video/example2_59s.mp4",
+  "source_fps": 30,
+  "selection_method": "local_visual_pick",
+  "selection_note": "Chosen from the stable seated talking-head segment where the subject remains centered and the desk area stays visible.",
+  "start_frame_path": "/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/output/Example2/start-stop-frames/start-frame.png",
+  "stop_frame_path": "/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/output/Example2/start-stop-frames/stop-frame.png",
+  "start_seconds": 20.5,
+  "end_seconds": 21.0,
+  "start_frame": 615,
+  "end_frame": 630,
+  "duration_seconds": 5,
+  "prompt": "Create a short realistic bridge clip that starts from the provided start frame and resolves naturally into the provided end frame. Keep the same indoor desk setup, camera angle, lighting, and conversational tone. The speaker stays seated at the desk, remains clearly visible in frame, and briefly interacts with a Pepsi Cola in a natural, unforced way near the desktop area. Motion should be smooth, physically plausible, and low-disruption, with no camera jumps, no stylized effects, and no scene change. The moment should feel like a believable continuation of the original talking-head video and reconnect cleanly to the end frame."
+}

@@ -17,46 +17,54 @@ func NewScenesRepository(db dbExecutor) *ScenesRepository {
 	return &ScenesRepository{db: db}
 }
 
+func (r *ScenesRepository) Insert(ctx context.Context, scene models.Scene) error {
+	keywordsJSON, err := json.Marshal(scene.ContextKeywords)
+	if err != nil {
+		return fmt.Errorf("marshal scene keywords for %s: %w", scene.ID, err)
+	}
+	metadataJSON, err := json.Marshal(scene.Metadata)
+	if err != nil {
+		return fmt.Errorf("marshal scene metadata for %s: %w", scene.ID, err)
+	}
+
+	_, err = r.db.ExecContext(ctx, `
+		INSERT INTO scenes (
+			id, job_id, scene_number, start_frame, end_frame, start_seconds, end_seconds, motion_score, stability_score, dialogue_activity_score, longest_quiet_window_seconds, narrative_summary, context_keywords_json, action_intensity_score, abrupt_cut_risk, metadata_json, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		scene.ID,
+		scene.JobID,
+		scene.SceneNumber,
+		scene.StartFrame,
+		scene.EndFrame,
+		scene.StartSeconds,
+		scene.EndSeconds,
+		scene.MotionScore,
+		scene.StabilityScore,
+		scene.DialogueActivityScore,
+		scene.LongestQuietWindowSeconds,
+		nullIfEmpty(scene.NarrativeSummary),
+		string(keywordsJSON),
+		scene.ActionIntensityScore,
+		scene.AbruptCutRisk,
+		string(metadataJSON),
+		scene.CreatedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("insert scene %s: %w", scene.ID, err)
+	}
+
+	return nil
+}
+
 func (r *ScenesRepository) ReplaceForJob(ctx context.Context, jobID string, scenes []models.Scene) error {
 	if _, err := r.db.ExecContext(ctx, `DELETE FROM scenes WHERE job_id = ?`, jobID); err != nil {
 		return fmt.Errorf("delete scenes for %s: %w", jobID, err)
 	}
 
 	for _, scene := range scenes {
-		keywordsJSON, err := json.Marshal(scene.ContextKeywords)
-		if err != nil {
-			return fmt.Errorf("marshal scene keywords for %s: %w", scene.ID, err)
-		}
-		metadataJSON, err := json.Marshal(scene.Metadata)
-		if err != nil {
-			return fmt.Errorf("marshal scene metadata for %s: %w", scene.ID, err)
-		}
-
-		_, err = r.db.ExecContext(ctx, `
-			INSERT INTO scenes (
-				id, job_id, scene_number, start_frame, end_frame, start_seconds, end_seconds, motion_score, stability_score, dialogue_activity_score, longest_quiet_window_seconds, narrative_summary, context_keywords_json, action_intensity_score, abrupt_cut_risk, metadata_json, created_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`,
-			scene.ID,
-			scene.JobID,
-			scene.SceneNumber,
-			scene.StartFrame,
-			scene.EndFrame,
-			scene.StartSeconds,
-			scene.EndSeconds,
-			scene.MotionScore,
-			scene.StabilityScore,
-			scene.DialogueActivityScore,
-			scene.LongestQuietWindowSeconds,
-			nullIfEmpty(scene.NarrativeSummary),
-			string(keywordsJSON),
-			scene.ActionIntensityScore,
-			scene.AbruptCutRisk,
-			string(metadataJSON),
-			scene.CreatedAt,
-		)
-		if err != nil {
-			return fmt.Errorf("insert scene %s: %w", scene.ID, err)
+		if err := r.Insert(ctx, scene); err != nil {
+			return err
 		}
 	}
 

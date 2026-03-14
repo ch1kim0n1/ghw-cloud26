@@ -261,6 +261,18 @@ func (s *JobService) buildManualImportSlot(ctx context.Context, job models.Job, 
 		}, err)
 	}
 	scene, ok := findSceneForManualSelection(scenes, startSeconds, endSeconds)
+	if !ok && len(scenes) == 0 {
+		startFrame, endFrame := sourceSceneFrames(job, startSeconds, endSeconds)
+		scene = buildSyntheticManualImportScene(job, startFrame, endFrame)
+		if err := sceneRepo.Insert(ctx, scene); err != nil {
+			return models.Slot{}, DatabaseFailure("failed to persist synthetic manual import scene", map[string]any{
+				"job_id":        job.ID,
+				"start_seconds": startSeconds,
+				"end_seconds":   endSeconds,
+			}, err)
+		}
+		ok = true
+	}
 	if !ok {
 		return models.Slot{}, InvalidRequest(constants.ErrorCodeInvalidRequest, "manual generation import must stay inside one analyzed scene", map[string]any{
 			"job_id":        job.ID,
@@ -330,6 +342,62 @@ func (s *JobService) buildManualImportSlot(ctx context.Context, job models.Job, 
 		UpdatedAt: now,
 	}
 	return slot, nil
+}
+
+func sourceSceneFrames(job models.Job, startSeconds, endSeconds float64) (int, int) {
+	metadata := ensureMetadata(job.Metadata)
+	sourceFPS := metadataFloat(metadata, "source_fps")
+	if sourceFPS <= 0 {
+		sourceFPS = 24
+	}
+	durationSeconds := metadataFloat(metadata, "duration_seconds")
+	startFrame := int(startSeconds * sourceFPS)
+	endFrame := int(endSeconds * sourceFPS)
+	if startFrame < 0 {
+		startFrame = 0
+	}
+	if durationSeconds > 0 {
+		maxFrame := int(durationSeconds * sourceFPS)
+		if endFrame > maxFrame {
+			endFrame = maxFrame
+		}
+	}
+	if endFrame <= startFrame {
+		endFrame = startFrame + 1
+	}
+	return startFrame, endFrame
+}
+
+func buildSyntheticManualImportScene(job models.Job, startFrame, endFrame int) models.Scene {
+	metadata := ensureMetadata(job.Metadata)
+	sourceFPS := metadataFloat(metadata, "source_fps")
+	if sourceFPS <= 0 {
+		sourceFPS = 24
+	}
+	durationSeconds := metadataFloat(metadata, "duration_seconds")
+	if durationSeconds <= 0 {
+		durationSeconds = float64(endFrame-startFrame) / sourceFPS
+	}
+	maxFrame := int(durationSeconds * sourceFPS)
+	if maxFrame <= 0 {
+		maxFrame = endFrame
+	}
+	return models.Scene{
+		ID:                    fmt.Sprintf("scene_%s_manual_import_synthetic", job.ID),
+		JobID:                 job.ID,
+		SceneNumber:           0,
+		StartFrame:            0,
+		EndFrame:              maxFrame,
+		StartSeconds:          0,
+		EndSeconds:            durationSeconds,
+		CreatedAt:             TimestampNow(),
+		Metadata:              models.Metadata{"synthetic_manual_import_scene": true},
+		MotionScore:           floatPtr(0.2),
+		StabilityScore:        floatPtr(0.8),
+		DialogueActivityScore: floatPtr(0.3),
+		ActionIntensityScore:  floatPtr(0.2),
+		AbruptCutRisk:         floatPtr(0.1),
+	}
 }
 
 func (s *JobService) copyManualImportArtifact(jobID, slotID, srcPath, filenamePrefix string) (string, error) {

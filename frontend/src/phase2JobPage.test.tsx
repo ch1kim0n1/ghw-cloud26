@@ -476,4 +476,140 @@ describe("Phase 3 job page", () => {
     await screen.findByText("Product Line Review");
     expect(screen.getByDisplayValue("Я возьму эту бутылку на секунду.")).toBeInTheDocument();
   });
+
+  it("imports a locally generated clip into the selected slot", async () => {
+    const state: {
+      job: Record<string, unknown>;
+      slots: Array<Record<string, unknown>>;
+      logs: Array<Record<string, unknown>>;
+      preview: Record<string, unknown> | null;
+    } = {
+      job: {
+        id: "job_4",
+        campaign_id: "camp_4",
+        status: "analyzing",
+        current_stage: "line_review",
+        progress_percent: 40,
+        selected_slot_id: "slot_4",
+        error_message: null,
+        error_code: null,
+        created_at: "2026-03-13T00:00:00Z",
+        started_at: "2026-03-13T00:01:00Z",
+        completed_at: null,
+        metadata: {
+          source_fps: 30,
+          duration_seconds: 59,
+          content_language: "en",
+        },
+      },
+      slots: [
+        {
+          id: "slot_4",
+          rank: 1,
+          scene_id: "scene_4",
+          anchor_start_frame: 615,
+          anchor_end_frame: 630,
+          source_fps: 30,
+          quiet_window_seconds: 4,
+          score: 0.77,
+          reasoning: "selected demo slot",
+          status: "selected",
+          suggested_product_line: "Pass me a Pepsi for this segment.",
+        },
+      ],
+      logs: [],
+      preview: null,
+    };
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+
+        if (url.includes("/api/jobs/job_4/slots/manual-import") && init?.method === "POST") {
+          state.job = {
+            ...state.job,
+            status: "generating",
+            current_stage: "generation_poll",
+            progress_percent: 80,
+          };
+          state.slots = state.slots.map((slot) =>
+            slot.id === "slot_4"
+              ? {
+                  ...slot,
+                  status: "generated",
+                  generated_clip_path: "/tmp/example2/generated.mp4",
+                }
+              : slot,
+          );
+
+          return {
+            ok: true,
+            json: async () => ({
+              job_id: "job_4",
+              slot_id: "slot_4",
+              status: "generating",
+              current_stage: "generation_poll",
+              slot_status: "generated",
+              generated_clip_path: "/tmp/example2/generated.mp4",
+              manual: true,
+              message: "manual generated clip imported",
+            }),
+          } as Response;
+        }
+
+        if (url.includes("/api/jobs/job_4/preview")) {
+          return {
+            ok: true,
+            json: async () => state.preview,
+          } as Response;
+        }
+
+        if (url.includes("/api/jobs/job_4/logs")) {
+          return {
+            ok: true,
+            json: async () => ({ job_id: "job_4", logs: state.logs }),
+          } as Response;
+        }
+
+        if (url.includes("/api/jobs/job_4/slots")) {
+          return {
+            ok: true,
+            json: async () => ({ job_id: "job_4", slots: state.slots }),
+          } as Response;
+        }
+
+        if (url.includes("/api/jobs/job_4")) {
+          return {
+            ok: true,
+            json: async () => state.job,
+          } as Response;
+        }
+
+        return {
+          ok: false,
+          status: 404,
+          json: async () => ({ error: "not found", error_code: "RESOURCE_NOT_FOUND" }),
+        } as Response;
+      }),
+    );
+
+    render(
+      <MemoryRouter initialEntries={["/jobs/job_4"]}>
+        <Routes>
+          <Route path="/jobs/:jobId" element={<JobPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await screen.findByText("Slot ID: slot_4");
+    fireEvent.change(screen.getByLabelText("Generated clip path"), {
+      target: { value: "/tmp/example2/generated.mp4" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Import generated clip" }));
+
+    await screen.findByText("manual generated clip imported");
+    expect(screen.getByText("/tmp/example2/generated.mp4")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Render preview" })).toBeInTheDocument();
+  });
 });

@@ -28,6 +28,25 @@ export function manualSelectSlot(
   });
 }
 
+export function manualImportSlot(
+  jobId: string,
+  payload: {
+    slot_id?: string;
+    start_seconds?: number;
+    end_seconds?: number;
+    generated_clip_path: string;
+    generated_audio_path?: string;
+  },
+): Promise<Record<string, unknown>> {
+  return request(`/api/jobs/${jobId}/slots/manual-import`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
 export function rejectSlot(jobId: string, slotId: string, note?: string): Promise<Record<string, unknown>> {
   return request(`/api/jobs/${jobId}/slots/${slotId}/reject`, {
     method: "POST",

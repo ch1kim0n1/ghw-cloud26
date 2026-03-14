@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
@@ -20,7 +20,23 @@ describe("App", () => {
   });
 
   afterEach(() => {
+    cleanup();
     vi.unstubAllGlobals();
+  });
+
+  it("renders the overview page route", async () => {
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("Insert ads that feel like part of the scene.")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("healthy")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Provider azure")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open demo run" })).toBeInTheDocument();
   });
 
   it("renders the products page route", async () => {
@@ -31,11 +47,20 @@ describe("App", () => {
     );
 
     expect(screen.getByText("Product Catalog")).toBeInTheDocument();
-    await waitFor(() => {
-      expect(screen.getByText("healthy")).toBeInTheDocument();
-    });
-    expect(screen.getByText("Provider azure")).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Preview" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Results" })).toBeInTheDocument();
+  });
+
+  it("renders the results page route", () => {
+    render(
+      <MemoryRouter initialEntries={["/results"]}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("Both stitched previews, shown clearly.")).toBeInTheDocument();
+    expect(screen.getAllByText("Generated segment inside the original minute")).toHaveLength(2);
+    expect(screen.getByText("Example1")).toBeInTheDocument();
+    expect(screen.getByText("Example2")).toBeInTheDocument();
   });
 
   it("renders the campaign page route", () => {
@@ -113,7 +138,7 @@ describe("App", () => {
     );
 
     render(
-      <MemoryRouter initialEntries={["/products"]}>
+      <MemoryRouter initialEntries={["/"]}>
         <App />
       </MemoryRouter>,
     );

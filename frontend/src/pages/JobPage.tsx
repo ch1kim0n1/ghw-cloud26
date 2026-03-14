@@ -9,7 +9,14 @@ import { usePreview } from "../hooks/usePreview";
 import { useSlots } from "../hooks/useSlots";
 import { startAnalysis } from "../services/analysisApi";
 import { getPreviewDownloadUrl, renderPreview } from "../services/previewApi";
-import { generateSlot, manualSelectSlot, rejectSlot, repickSlots, selectSlot } from "../services/slotsApi";
+import {
+  generateSlot,
+  manualImportSlot,
+  manualSelectSlot,
+  rejectSlot,
+  repickSlots,
+  selectSlot,
+} from "../services/slotsApi";
 import { ApiError } from "../types/Api";
 import type { Job } from "../types/Job";
 import type { Slot } from "../types/Slot";
@@ -38,6 +45,11 @@ export function JobPage() {
   const [manualStartSeconds, setManualStartSeconds] = useState("");
   const [manualEndSeconds, setManualEndSeconds] = useState("");
   const [manualSelectPending, setManualSelectPending] = useState(false);
+  const [manualImportClipPath, setManualImportClipPath] = useState("");
+  const [manualImportAudioPath, setManualImportAudioPath] = useState("");
+  const [manualImportStartSeconds, setManualImportStartSeconds] = useState("");
+  const [manualImportEndSeconds, setManualImportEndSeconds] = useState("");
+  const [manualImportPending, setManualImportPending] = useState(false);
   const [jobPollingEnabled, setJobPollingEnabled] = useState(Boolean(jobId));
 
   const { job, error: jobError, loading: jobLoading, refresh: refreshJob } = useJob(jobId, {
@@ -270,6 +282,58 @@ export function JobPage() {
     }
   }
 
+  async function handleManualImport() {
+    if (!jobId) {
+      return;
+    }
+
+    const clipPath = manualImportClipPath.trim();
+    if (clipPath === "") {
+      setActionError("Manual generation import requires the generated clip path.");
+      return;
+    }
+
+    const startSeconds = manualImportStartSeconds.trim();
+    const endSeconds = manualImportEndSeconds.trim();
+    const shouldSendTimes = !selectedSlot;
+    const parsedStartSeconds = startSeconds === "" ? Number.NaN : Number(startSeconds);
+    const parsedEndSeconds = endSeconds === "" ? Number.NaN : Number(endSeconds);
+
+    if (shouldSendTimes && (!Number.isFinite(parsedStartSeconds) || !Number.isFinite(parsedEndSeconds))) {
+      setActionError("Manual generation import requires numeric start and end times when no slot is selected.");
+      return;
+    }
+
+    setActionError(null);
+    setActionMessage(null);
+    setManualImportPending(true);
+
+    try {
+      const response = await manualImportSlot(jobId, {
+        slot_id: selectedSlot?.id,
+        start_seconds: shouldSendTimes ? parsedStartSeconds : undefined,
+        end_seconds: shouldSendTimes ? parsedEndSeconds : undefined,
+        generated_clip_path: clipPath,
+        generated_audio_path: manualImportAudioPath.trim() || undefined,
+      });
+      setActionMessage(String(response.message ?? "manual generated clip imported"));
+      setManualImportAudioPath("");
+      if (!selectedSlot) {
+        setManualImportStartSeconds("");
+        setManualImportEndSeconds("");
+      }
+      await refreshAll();
+    } catch (reason: unknown) {
+      if (reason instanceof ApiError) {
+        setActionError(reason.message);
+      } else {
+        setActionError("Unable to import the generated clip.");
+      }
+    } finally {
+      setManualImportPending(false);
+    }
+  }
+
   const canRenderPreview = Boolean(
     selectedSlot &&
     selectedSlot.status === "generated" &&
@@ -290,6 +354,10 @@ export function JobPage() {
         <p>
           Start analysis explicitly, review the ranked insertion slots, prepare one product line, and start CAFAI
           generation for the selected candidate.
+        </p>
+        <p className="muted">
+          Demo runs can bypass live generation by importing a locally generated MP4 into the selected slot and then
+          continuing through preview render.
         </p>
         <div className="status-strip">
           <span>{jobLoading ? "Loading job..." : jobError ?? job?.status ?? "Job unavailable"}</span>
@@ -426,6 +494,72 @@ export function JobPage() {
             </div>
           </section>
         ) : null}
+        {canSelectSlots || selectedSlot ? (
+          <>
+            <section className="card">
+              <div className="list-block__header">
+                <div>
+                  <p className="eyebrow">Manual generation import</p>
+                  <h3>Use a locally generated clip</h3>
+                </div>
+              </div>
+              <p className="muted">
+                {selectedSlot
+                  ? "Import the generated bridge clip into the currently selected slot, then render the preview normally."
+                  : "If no slot is selected yet, provide the generated clip plus anchor times inside one analyzed scene."}
+              </p>
+              <div className="form-grid">
+                <label className="field">
+                  <span>Generated clip path</span>
+                  <input
+                    type="text"
+                    placeholder="/absolute/path/to/generated.mp4"
+                    value={manualImportClipPath}
+                    onChange={(event) => setManualImportClipPath(event.target.value)}
+                  />
+                </label>
+                <label className="field">
+                  <span>Generated audio path (optional)</span>
+                  <input
+                    type="text"
+                    placeholder="/absolute/path/to/generated.wav"
+                    value={manualImportAudioPath}
+                    onChange={(event) => setManualImportAudioPath(event.target.value)}
+                  />
+                </label>
+                {!selectedSlot ? (
+                  <div className="field-row">
+                    <label className="field">
+                      <span>Import start seconds</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.1"
+                        value={manualImportStartSeconds}
+                        onChange={(event) => setManualImportStartSeconds(event.target.value)}
+                      />
+                    </label>
+                    <label className="field">
+                      <span>Import end seconds</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.1"
+                        value={manualImportEndSeconds}
+                        onChange={(event) => setManualImportEndSeconds(event.target.value)}
+                      />
+                    </label>
+                  </div>
+                ) : null}
+                <div className="form-actions">
+                  <button type="button" onClick={handleManualImport} disabled={manualImportPending}>
+                    {manualImportPending ? "Importing..." : "Import generated clip"}
+                  </button>
+                </div>
+              </div>
+            </section>
+          </>
+        ) : null}
         {!slotsLoading && slots.length === 0 ? <p>No slots available yet.</p> : null}
         <div className="card-grid">
           {slots.map((slot) => (
@@ -440,6 +574,23 @@ export function JobPage() {
           ))}
         </div>
       </section>
+
+      {selectedSlot ? (
+        <section className="panel">
+          <div className="list-block__header">
+            <div>
+              <p className="eyebrow">Selected slot</p>
+              <h2>Generation handoff</h2>
+            </div>
+          </div>
+          <p>Slot ID: {selectedSlot.id}</p>
+          <p>
+            Anchor frames: {selectedSlot.anchor_start_frame} to {selectedSlot.anchor_end_frame}
+          </p>
+          {selectedSlot.generated_clip_path ? <p>Generated clip: {selectedSlot.generated_clip_path}</p> : null}
+          {selectedSlot.generated_audio_path ? <p>Generated audio: {selectedSlot.generated_audio_path}</p> : null}
+        </section>
+      ) : null}
 
       {selectedSlot ? <ProductLineEditor slot={selectedSlot} pending={generatePending} onGenerate={handleGenerate} /> : null}
     </div>
