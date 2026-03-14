@@ -73,6 +73,10 @@ func (s *JobService) processRenderSubmission(ctx context.Context, job models.Job
 		AudioStrategy:         "crossfade",
 	})
 	if err != nil {
+		fallbackHandled, fallbackErr := s.tryLocalRenderFallback(ctx, job, preview, slot, campaign, artifactManifest, fmt.Sprintf("render submission failed: %v", err))
+		if fallbackHandled || fallbackErr != nil {
+			return fallbackErr
+		}
 		return s.failRenderJob(ctx, job, preview, slot.ID, "render submission failed")
 	}
 
@@ -93,6 +97,10 @@ func (s *JobService) processRenderSubmission(ctx context.Context, job models.Job
 		message := strings.TrimSpace(response.Message)
 		if message == "" {
 			message = "preview render failed"
+		}
+		fallbackHandled, fallbackErr := s.tryLocalRenderFallback(ctx, job, preview, slot, campaign, artifactManifest, message)
+		if fallbackHandled || fallbackErr != nil {
+			return fallbackErr
 		}
 		return s.failRenderJob(ctx, job, preview, slot.ID, message)
 	}
@@ -152,6 +160,10 @@ func (s *JobService) processRenderPoll(ctx context.Context, job models.Job) erro
 	if err != nil {
 		return err
 	}
+	artifactManifest := cloneMetadata(preview.ArtifactManifest)
+	if artifactManifest == nil {
+		artifactManifest = models.Metadata{}
+	}
 
 	requestID := metadataString(job.Metadata, internalRenderRequestIDKey)
 	if requestID == "" {
@@ -164,12 +176,11 @@ func (s *JobService) processRenderPoll(ctx context.Context, job models.Job) erro
 		RequestID: requestID,
 	})
 	if err != nil {
+		fallbackHandled, fallbackErr := s.tryLocalRenderFallback(ctx, job, preview, slot, campaign, artifactManifest, fmt.Sprintf("render polling failed: %v", err))
+		if fallbackHandled || fallbackErr != nil {
+			return fallbackErr
+		}
 		return s.failRenderJob(ctx, job, preview, slot.ID, "render polling failed")
-	}
-
-	artifactManifest := cloneMetadata(preview.ArtifactManifest)
-	if artifactManifest == nil {
-		artifactManifest = models.Metadata{}
 	}
 	if response.PreviewBlobURI != "" {
 		artifactManifest["preview_blob_uri"] = response.PreviewBlobURI
@@ -186,10 +197,18 @@ func (s *JobService) processRenderPoll(ctx context.Context, job models.Job) erro
 		if message == "" {
 			message = "preview render failed"
 		}
+		fallbackHandled, fallbackErr := s.tryLocalRenderFallback(ctx, job, preview, slot, campaign, artifactManifest, message)
+		if fallbackHandled || fallbackErr != nil {
+			return fallbackErr
+		}
 		return s.failRenderJob(ctx, job, preview, slot.ID, message)
 	case "completed", "succeeded":
 		return s.persistCompletedRender(ctx, job, preview, slot, campaign, response, artifactManifest)
 	default:
+		fallbackHandled, fallbackErr := s.tryLocalRenderFallback(ctx, job, preview, slot, campaign, artifactManifest, fmt.Sprintf("render returned unknown status %q", response.Status))
+		if fallbackHandled || fallbackErr != nil {
+			return fallbackErr
+		}
 		return s.failRenderJob(ctx, job, preview, slot.ID, fmt.Sprintf("render returned unknown status %q", response.Status))
 	}
 }

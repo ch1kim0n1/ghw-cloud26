@@ -418,12 +418,15 @@ func buildHiggsfieldPrompt(req GenerationRequest) string {
 
 func higgsfieldDuration(targetSeconds int) int {
 	if targetSeconds <= 0 {
-		return 6
+		return 5
 	}
-	if targetSeconds > 8 {
-		return 8
+	if targetSeconds <= 7 {
+		return 5
 	}
-	return targetSeconds
+	if targetSeconds > 10 {
+		return 10
+	}
+	return 10
 }
 
 func normalizeHiggsfieldStatus(value string) string {

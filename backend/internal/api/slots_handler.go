@@ -55,6 +55,34 @@ func newSlotsHandler(deps Dependencies) http.HandlerFunc {
 				"manual":                 true,
 				"message":                "manual slot selected and product line prepared",
 			})
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/manual-import"):
+			var payload struct {
+				SlotID             string   `json:"slot_id"`
+				StartSeconds       *float64 `json:"start_seconds"`
+				EndSeconds         *float64 `json:"end_seconds"`
+				GeneratedClipPath  string   `json:"generated_clip_path"`
+				GeneratedAudioPath string   `json:"generated_audio_path"`
+			}
+			if r.Body != nil {
+				_ = json.NewDecoder(r.Body).Decode(&payload)
+			}
+
+			job, slot, err := service.ImportManualGeneration(r.Context(), jobID, payload.SlotID, payload.StartSeconds, payload.EndSeconds, payload.GeneratedClipPath, payload.GeneratedAudioPath)
+			if err != nil {
+				writeServiceError(w, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{
+				"job_id":               job.ID,
+				"slot_id":              slot.ID,
+				"status":               job.Status,
+				"current_stage":        job.CurrentStage,
+				"slot_status":          slot.Status,
+				"generated_clip_path":  slot.GeneratedClipPath,
+				"generated_audio_path": slot.GeneratedAudioPath,
+				"manual":               true,
+				"message":              "manual generated clip imported",
+			})
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/reject"):
 			var payload struct {
 				Note string `json:"note"`

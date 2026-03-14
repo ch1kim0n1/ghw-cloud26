@@ -82,6 +82,7 @@ func (c *AzureBlobStorageClient) Upload(ctx context.Context, req BlobUploadReque
 		return BlobUploadResponse{}, fmt.Errorf("create Azure Blob upload request: %w", err)
 	}
 	httpRequest.Header.Set("x-ms-blob-type", "BlockBlob")
+	httpRequest.ContentLength = info.Size()
 	httpRequest.Header.Set("Content-Length", fmt.Sprintf("%d", info.Size()))
 	httpRequest.Header.Set("Content-Type", detectBlobContentType(objectName))
 

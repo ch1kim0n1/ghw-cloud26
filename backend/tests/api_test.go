@@ -1493,6 +1493,197 @@ func TestPhaseThreeManualSlotSelectionRejectsCrossSceneRange(t *testing.T) {
 	}
 }
 
+func TestPhaseThreeManualGenerationImportCanProceedToPreviewRender(t *testing.T) {
+	analysisClient := &fakeAnalysisClient{
+		submitRequestID: "req_manual_import",
+		pollResponses: []services.AnalysisPollResponse{
+			{RequestID: "req_manual_import", Status: "completed", Scenes: noValidAnalysisScenes()},
+		},
+	}
+	openAIClient := &fakeOpenAIClient{responseContent: invalidSlotRankingContent()}
+	blobClient := &fakeBlobStorageClient{}
+	renderClient := &fakeRenderClient{
+		submitResponse: services.RenderResponse{RequestID: "render_manual_import", Status: "submitted"},
+		pollResponses: []services.RenderResponse{
+			{RequestID: "render_manual_import", Status: "pending"},
+			{
+				RequestID:       "render_manual_import",
+				Status:          "completed",
+				PreviewBlobURI:  "https://blob.example.com/renders/job_fixture_manual_import_preview.mp4",
+				DurationSeconds: 905,
+			},
+		},
+	}
+	env := newAPIEnvWithPreviewClients(t, analysisClient, openAIClient, &fakeMLClient{}, &fakeAnchorFrameExtractor{}, blobClient, renderClient)
+	product := insertProductFixture(t, env.database, "manual import product")
+	_, job := insertCampaignJobFixture(t, env.database, product.ID, "manual_import")
+
+	startRec := env.serve(http.MethodPost, "/api/jobs/"+job.ID+"/start-analysis", nil, "")
+	if startRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", startRec.Code, startRec.Body.String())
+	}
+	if err := env.jobService.ProcessPendingAnalysis(context.Background()); err != nil {
+		t.Fatalf("ProcessPendingAnalysis() analysis error = %v", err)
+	}
+
+	importedClip := filepath.Join(t.TempDir(), "manual-generated.mp4")
+	if err := os.WriteFile(importedClip, []byte("manual generated clip"), 0o644); err != nil {
+		t.Fatalf("WriteFile() imported clip error = %v", err)
+	}
+
+	importRec := env.serve(http.MethodPost, "/api/jobs/"+job.ID+"/slots/manual-import", []byte(fmt.Sprintf(`{"start_seconds":7,"end_seconds":8,"generated_clip_path":%q}`, importedClip)), "application/json")
+	if importRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", importRec.Code, importRec.Body.String())
+	}
+
+	var importPayload map[string]any
+	decodeJSON(t, importRec.Body.Bytes(), &importPayload)
+	slotID, ok := importPayload["slot_id"].(string)
+	if !ok || slotID == "" {
+		t.Fatalf("expected imported slot id, got %#v", importPayload["slot_id"])
+	}
+	if importPayload["slot_status"] != constants.SlotStatusGenerated {
+		t.Fatalf("expected generated slot status, got %#v", importPayload["slot_status"])
+	}
+
+	slotRec := env.serve(http.MethodGet, "/api/jobs/"+job.ID+"/slots/"+slotID, nil, "")
+	if slotRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", slotRec.Code, slotRec.Body.String())
+	}
+	var slot models.Slot
+	decodeJSON(t, slotRec.Body.Bytes(), &slot)
+	if slot.GeneratedClipPath == nil || *slot.GeneratedClipPath == "" {
+		t.Fatal("expected generated clip path after manual import")
+	}
+	if slot.Metadata["manual_generation_import"] != true {
+		t.Fatalf("expected manual import metadata, got %#v", slot.Metadata)
+	}
+
+	renderRec := env.serve(http.MethodPost, "/api/jobs/"+job.ID+"/preview/render", []byte(`{"slot_id":"`+slotID+`"}`), "application/json")
+	if renderRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", renderRec.Code, renderRec.Body.String())
+	}
+
+	if err := env.jobService.ProcessPendingAnalysis(context.Background()); err != nil {
+		t.Fatalf("ProcessPendingAnalysis() render submission error = %v", err)
+	}
+	if blobClient.uploads == nil {
+		blobClient.uploads = map[string][]byte{}
+	}
+	blobClient.uploads["https://blob.example.com/renders/job_fixture_manual_import_preview.mp4"] = []byte("preview video bytes")
+	if err := env.jobService.ProcessPendingAnalysis(context.Background()); err != nil {
+		t.Fatalf("ProcessPendingAnalysis() render pending error = %v", err)
+	}
+	if err := env.jobService.ProcessPendingAnalysis(context.Background()); err != nil {
+		t.Fatalf("ProcessPendingAnalysis() render completion error = %v", err)
+	}
+
+	previewRec := env.serve(http.MethodGet, "/api/jobs/"+job.ID+"/preview", nil, "")
+	if previewRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", previewRec.Code, previewRec.Body.String())
+	}
+	var preview models.Preview
+	decodeJSON(t, previewRec.Body.Bytes(), &preview)
+	if preview.Status != "completed" {
+		t.Fatalf("expected completed preview, got %s", preview.Status)
+	}
+	if preview.OutputVideoPath == "" {
+		t.Fatal("expected preview output path")
+	}
+}
+
+func TestPreviewRenderFallsBackToLocalFFmpegWhenCloudRenderFails(t *testing.T) {
+	requireMediaToolchain(t)
+
+	analysisClient := &fakeAnalysisClient{
+		submitRequestID: "req_render_fallback",
+		pollResponses: []services.AnalysisPollResponse{
+			{RequestID: "req_render_fallback", Status: "completed", Scenes: noValidAnalysisScenes()},
+		},
+	}
+	openAIClient := &fakeOpenAIClient{responseContent: invalidSlotRankingContent()}
+	blobClient := &fakeBlobStorageClient{}
+	renderClient := &fakeRenderClient{
+		submitErr: fmt.Errorf("cloud render unavailable"),
+	}
+	env := newAPIEnvWithPreviewClients(t, analysisClient, openAIClient, &fakeMLClient{}, &fakeAnchorFrameExtractor{}, blobClient, renderClient)
+	product := insertProductFixture(t, env.database, "render fallback product")
+	campaign, job := insertCampaignJobFixture(t, env.database, product.ID, "render_fallback")
+
+	sourceVideo := filepath.Join(t.TempDir(), "source_with_audio.mp4")
+	if err := createAVVideoFixture(sourceVideo, 12, "blue", 220); err != nil {
+		t.Fatalf("createAVVideoFixture() source error = %v", err)
+	}
+	if _, err := env.database.Exec(`UPDATE campaigns SET video_path = ?, duration_seconds = ?, source_fps = ? WHERE id = ?`, sourceVideo, 12.0, 24.0, campaign.ID); err != nil {
+		t.Fatalf("update campaign video fixture error = %v", err)
+	}
+	if _, err := env.database.Exec(`UPDATE jobs SET metadata_json = ? WHERE id = ?`, `{"source_fps":24,"duration_seconds":12,"rejected_slot_ids":[]}`, job.ID); err != nil {
+		t.Fatalf("update job metadata error = %v", err)
+	}
+
+	startRec := env.serve(http.MethodPost, "/api/jobs/"+job.ID+"/start-analysis", nil, "")
+	if startRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", startRec.Code, startRec.Body.String())
+	}
+	if err := env.jobService.ProcessPendingAnalysis(context.Background()); err != nil {
+		t.Fatalf("ProcessPendingAnalysis() analysis error = %v", err)
+	}
+
+	importedClip := filepath.Join(t.TempDir(), "manual-generated-with-audio.mp4")
+	if err := createAVVideoFixture(importedClip, 3, "red", 880); err != nil {
+		t.Fatalf("createAVVideoFixture() generated clip error = %v", err)
+	}
+
+	importRec := env.serve(http.MethodPost, "/api/jobs/"+job.ID+"/slots/manual-import", []byte(fmt.Sprintf(`{"start_seconds":2,"end_seconds":3,"generated_clip_path":%q}`, importedClip)), "application/json")
+	if importRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", importRec.Code, importRec.Body.String())
+	}
+	var importPayload map[string]any
+	decodeJSON(t, importRec.Body.Bytes(), &importPayload)
+	slotID, ok := importPayload["slot_id"].(string)
+	if !ok || slotID == "" {
+		t.Fatalf("expected slot_id from manual import, got %#v", importPayload["slot_id"])
+	}
+
+	renderRec := env.serve(http.MethodPost, "/api/jobs/"+job.ID+"/preview/render", []byte(`{"slot_id":"`+slotID+`"}`), "application/json")
+	if renderRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", renderRec.Code, renderRec.Body.String())
+	}
+
+	if err := env.jobService.ProcessPendingAnalysis(context.Background()); err != nil {
+		t.Fatalf("ProcessPendingAnalysis() render fallback error = %v", err)
+	}
+
+	jobRec := env.serve(http.MethodGet, "/api/jobs/"+job.ID, nil, "")
+	if jobRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", jobRec.Code, jobRec.Body.String())
+	}
+	var current models.Job
+	decodeJSON(t, jobRec.Body.Bytes(), &current)
+	if current.Status != constants.JobStatusCompleted {
+		t.Fatalf("expected completed job after local render fallback, got %s", current.Status)
+	}
+	if current.Metadata["render_provider_used"] != "local_ffmpeg_fallback" {
+		t.Fatalf("expected local render provider metadata, got %#v", current.Metadata)
+	}
+
+	previewRec := env.serve(http.MethodGet, "/api/jobs/"+job.ID+"/preview", nil, "")
+	if previewRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", previewRec.Code, previewRec.Body.String())
+	}
+	var preview models.Preview
+	decodeJSON(t, previewRec.Body.Bytes(), &preview)
+	if preview.Status != "completed" {
+		t.Fatalf("expected completed preview, got %s", preview.Status)
+	}
+	if preview.OutputVideoPath == "" {
+		t.Fatal("expected local fallback preview output path")
+	}
+	if _, err := os.Stat(preview.OutputVideoPath); err != nil {
+		t.Fatalf("expected local preview output to exist at %s: %v", preview.OutputVideoPath, err)
+	}
+}
+
 func TestPhaseThreeRussianLanguageFlowsIntoGeneration(t *testing.T) {
 	analysisClient := &fakeAnalysisClient{
 		submitRequestID: "req_ru",
@@ -2077,6 +2268,28 @@ func createVideoFixture(path string, durationSeconds int, codec string) error {
 	output, err := command.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("ffmpeg failed: %w: %s", err, string(output))
+	}
+	return nil
+}
+
+func createAVVideoFixture(path string, durationSeconds int, color string, toneHz int) error {
+	command := exec.Command(
+		"ffmpeg",
+		"-y",
+		"-f", "lavfi",
+		"-i", fmt.Sprintf("color=c=%s:s=320x180:r=24:d=%d", color, durationSeconds),
+		"-f", "lavfi",
+		"-i", fmt.Sprintf("sine=frequency=%d:sample_rate=44100:duration=%d", toneHz, durationSeconds),
+		"-c:v", "libx264",
+		"-pix_fmt", "yuv420p",
+		"-c:a", "aac",
+		"-b:a", "128k",
+		"-shortest",
+		path,
+	)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("ffmpeg av fixture failed: %w: %s", err, string(output))
 	}
 	return nil
 }
