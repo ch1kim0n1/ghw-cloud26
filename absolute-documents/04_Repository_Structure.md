@@ -167,15 +167,19 @@ The frontend is an operator dashboard for:
 - slot review
 - product line review
 - CAFAI generation status
+- preview render start
+- preview playback
 - preview download
 
-For the currently implemented Phase 0-3 workflow, the primary live operator path is:
+For the currently implemented Phase 0-4 workflow, the primary live operator path is:
 
 - product creation
 - campaign creation
 - explicit analysis start
 - slot review with select, reject, and re-pick
 - product line review and CAFAI generation start
+- preview render start
+- preview playback and download
 
 ### tmp/
 

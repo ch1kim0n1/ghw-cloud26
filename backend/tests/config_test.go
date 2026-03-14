@@ -32,7 +32,7 @@ func TestLoadConfigDefaultsAndOverrides(t *testing.T) {
 	}
 
 	expectedDB := filepath.Join(root, "tmp", "cafai_mvp.db")
-	if cfg.DatabasePath != expectedDB {
+	if !samePath(expectedDB, cfg.DatabasePath) {
 		t.Fatalf("expected database path %q, got %q", expectedDB, cfg.DatabasePath)
 	}
 }
@@ -65,7 +65,42 @@ func TestLoadConfigFromBackendWorkingDirectory(t *testing.T) {
 		t.Fatalf("Load() error = %v", err)
 	}
 
-	if cfg.RepoRoot != root {
+	if !samePath(root, cfg.RepoRoot) {
 		t.Fatalf("expected repo root %q, got %q", root, cfg.RepoRoot)
 	}
+}
+
+func samePath(expected, actual string) bool {
+	return canonicalTestPath(expected) == canonicalTestPath(actual)
+}
+
+func canonicalTestPath(path string) string {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return path
+	}
+
+	current := absolute
+	suffix := make([]string, 0)
+	for {
+		if _, err := os.Stat(current); err == nil {
+			resolved, err := filepath.EvalSymlinks(current)
+			if err == nil {
+				for index := len(suffix) - 1; index >= 0; index-- {
+					resolved = filepath.Join(resolved, suffix[index])
+				}
+				return resolved
+			}
+			break
+		}
+
+		parent := filepath.Dir(current)
+		if parent == current {
+			break
+		}
+		suffix = append(suffix, filepath.Base(current))
+		current = parent
+	}
+
+	return absolute
 }

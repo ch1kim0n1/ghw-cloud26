@@ -1,8 +1,10 @@
 # ghw-cloud26
 
 ## Development
+- Prerequisites for backend development: Go `1.25+`
 - Prerequisites for backend runtime: `ffprobe` and `ffmpeg` on `PATH`
 - Prerequisites for backend tests: `ffmpeg` and `ffprobe` on `PATH`
+- Prerequisites for frontend development: Node.js + npm
 - macOS install: `brew install ffmpeg`
 - Backend dev server from the repo root: `go run ./backend/cmd/server`
 - Backend tests from `backend/`: `go test ./...`
@@ -41,14 +43,16 @@ Implemented now:
 - Phase 1: product and campaign ingest
 - Phase 2: explicit analysis start, worker polling, scene persistence, slot review, reject, and re-pick
 - Phase 3: slot selection, product-line review, and CAFAI generation state tracking
+- Phase 4: preview render start, render polling, preview persistence, playback, and download
 
 Runtime requirements:
-- Phases 2 and 3 are part of the shipped app and require Azure Video Indexer, Azure OpenAI, and Azure Machine Learning configuration before the backend will start
+- Phases 2, 3, and 4 are part of the shipped app and require provider configuration before the backend will start
 - Phase 3 runtime also requires local `ffmpeg` because anchor-frame images are extracted before generation submission
+- Phase 4 runtime requires Blob/Object Storage plus render service configuration because preview rendering is wired into the shipped backend startup path
 - local SQLite, uploads, and runtime directories remain part of the MVP control plane
 
 Intentionally deferred:
-- Phase 4: preview rendering and download
+- Phase 5: demo hardening, broader validation, and production-quality reliability work
 
 ## Documentation
 Core engineering docs live in [absolute-documents/01_Product_Design_Document.md](absolute-documents/01_Product_Design_Document.md) through [absolute-documents/08_Task_Decomposition_Plan.md](absolute-documents/08_Task_Decomposition_Plan.md).
@@ -60,6 +64,7 @@ Recommended reading order:
 4. [06_API_Contracts.md](absolute-documents/06_API_Contracts.md)
 5. [07_Data_Schema_Definitions.md](absolute-documents/07_Data_Schema_Definitions.md)
 6. [08_Task_Decomposition_Plan.md](absolute-documents/08_Task_Decomposition_Plan.md)
+7. [10_Phase_4_Gap_Assessment.md](absolute-documents/10_Phase_4_Gap_Assessment.md)
 
 Document purposes:
 - [01_Product_Design_Document.md](absolute-documents/01_Product_Design_Document.md): canonical MVP product behavior, constraints, and success criteria
@@ -70,6 +75,7 @@ Document purposes:
 - [06_API_Contracts.md](absolute-documents/06_API_Contracts.md): REST surface, payloads, and error envelope
 - [07_Data_Schema_Definitions.md](absolute-documents/07_Data_Schema_Definitions.md): SQLite schema, indexes, and metadata rules
 - [08_Task_Decomposition_Plan.md](absolute-documents/08_Task_Decomposition_Plan.md): ordered MVP build phases and demo acceptance checklist
+- [10_Phase_4_Gap_Assessment.md](absolute-documents/10_Phase_4_Gap_Assessment.md): current Phase 4 implementation status, remaining gaps, and completion plan
 
 ## Architecture At A Glance
 The documented MVP architecture is:
@@ -114,7 +120,7 @@ The documented MVP API base path is `/api`, with snake_case JSON and no auth in 
 Current implementation status:
 - `GET /api/health` is live
 - products, campaigns, jobs, analysis start, slot list/detail, slot select, slot reject, slot re-pick, and slot generate are implemented
-- preview routes remain intentionally unimplemented until Phase 4
+- preview render, preview status, preview streaming, and preview download routes are implemented
 
 Planned MVP route groups from the docs:
 - products: `POST /api/products`, `GET /api/products`
@@ -217,5 +223,13 @@ Phase 3 is implemented with:
 - generated artifact metadata persisted on the selected slot
 - generation failures surfaced clearly on both job and slot state
 
-Phase 4 is intentionally deferred:
-- preview rendering, preview status, and preview download
+Phase 4 is implemented with:
+- preview render start from the selected generated slot
+- artifact upload to temporary cloud storage before render submission
+- worker-driven render submission and polling
+- preview artifact download back to local storage
+- preview status, playback stream, and download routes
+- dashboard preview status, open, and download actions
+
+Phase 4 remaining work is tracked in:
+- [10_Phase_4_Gap_Assessment.md](absolute-documents/10_Phase_4_Gap_Assessment.md)

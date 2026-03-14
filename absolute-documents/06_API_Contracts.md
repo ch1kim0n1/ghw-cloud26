@@ -23,7 +23,8 @@ Response:
 {
   "status": "healthy",
   "timestamp": "2026-03-12T21:00:00Z",
-  "version": "0.1.0-mvp"
+  "version": "0.1.0-mvp",
+  "provider_profile": "azure"
 }
 ```
 
@@ -111,6 +112,7 @@ Product attachment options:
 - or create a product inline with:
   - `product_name`
   - `product_description`
+  - `product_category`
   - `product_context_keywords`
   - `product_source_url`
   - `product_image_file`
@@ -118,7 +120,7 @@ Product attachment options:
 Video validation:
 
 - file must be H.264 MP4
-- duration must be between 10 and 20 minutes for the full MVP path
+- duration must be between 40 and 60 seconds for the baseline validation profile or between 10 and 20 minutes for the full MVP path
 
 Response:
 
@@ -420,6 +422,14 @@ Response:
 - `200 OK`
 - `Content-Type: video/mp4`
 - binary MP4 stream
+
+### GET `/api/jobs/{job_id}/preview/stream`
+
+Response:
+
+- `200 OK`
+- `Content-Type: video/mp4`
+- binary MP4 stream intended for inline playback
 
 ## 10. Error Response
 

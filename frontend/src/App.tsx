@@ -10,13 +10,13 @@ function App() {
     <div className="app-shell">
       <header className="hero">
         <div>
-          <p className="eyebrow">CAFAI phase 3</p>
+          <p className="eyebrow">CAFAI phase 4</p>
           <h1>Cloud-assisted ad insertion dashboard</h1>
           <p className="hero-copy">
             Product ingest, campaign intake, explicit analysis start, slot
-            review, product line review, and CAFAI generation are live. Real
-            runs require Azure Video Indexer, Azure OpenAI, and Azure Machine
-            Learning configuration.
+            review, product line review, CAFAI generation, and preview
+            rendering are live. Real runs require analysis, generation, blob,
+            and render provider configuration.
           </p>
         </div>
         <HealthStatusPanel />

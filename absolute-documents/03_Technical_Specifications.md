@@ -67,7 +67,7 @@ Azure Blob Storage or Vultr Object Storage is used as temporary cloud artifact s
 
 ### 6.0 Local Runtime Dependencies
 
-The local Phase 0-3 control plane assumes these command-line tools are available on `PATH`:
+The local Phase 0-4 control plane assumes these command-line tools are available on `PATH`:
 
 - `ffprobe` for runtime media inspection during campaign intake
 - `ffmpeg` for runtime anchor-frame extraction during Phase 3 generation plus backend test fixture generation and later-phase media work

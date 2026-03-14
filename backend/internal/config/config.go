@@ -107,7 +107,7 @@ func Load() (Config, error) {
 
 func resolveRepoRoot() (string, error) {
 	if explicit := os.Getenv("CAFAI_REPO_ROOT"); explicit != "" {
-		return filepath.Abs(explicit)
+		return canonicalizePath(explicit)
 	}
 
 	wd, err := os.Getwd()
@@ -118,10 +118,22 @@ func resolveRepoRoot() (string, error) {
 	base := filepath.Base(wd)
 	switch base {
 	case "backend", "frontend":
-		return filepath.Dir(wd), nil
+		return canonicalizePath(filepath.Dir(wd))
 	default:
-		return wd, nil
+		return canonicalizePath(wd)
 	}
+}
+
+func canonicalizePath(path string) (string, error) {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	resolved, err := filepath.EvalSymlinks(absolute)
+	if err == nil {
+		return resolved, nil
+	}
+	return absolute, nil
 }
 
 func getEnv(key, fallback string) string {

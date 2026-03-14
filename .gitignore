@@ -5,6 +5,8 @@ frontend/*.tsbuildinfo
 frontend/vite.config.js
 frontend/vite.config.d.ts
 .env
+.env.local
+.env.phase4.local
 .DS_Store
 Thumbs.db
 .vscode/
