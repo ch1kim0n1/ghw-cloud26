@@ -19,6 +19,7 @@ type Config struct {
 	UploadProductsDir            string
 	UploadCampaignsDir           string
 	ArtifactsDir                 string
+	CacheDir                     string
 	PreviewsDir                  string
 	AllowedOrigins               []string
 	WorkerInterval               time.Duration
@@ -39,6 +40,9 @@ type Config struct {
 	AzureBlobSASToken            string
 	AzureRenderURL               string
 	AzureRenderAPIKey            string
+	HiggsfieldAPIKey             string
+	HiggsfieldAPISecret          string
+	HiggsfieldBaseURL            string
 	VultrAnalysisURL             string
 	VultrAnalysisAPIKey          string
 	VultrLLMURL                  string
@@ -69,6 +73,7 @@ func Load() (Config, error) {
 		UploadProductsDir:            filepath.Join(repoRoot, "tmp", "uploads", "products"),
 		UploadCampaignsDir:           filepath.Join(repoRoot, "tmp", "uploads", "campaigns"),
 		ArtifactsDir:                 filepath.Join(repoRoot, "tmp", "artifacts"),
+		CacheDir:                     filepath.Join(repoRoot, "tmp", "cache"),
 		PreviewsDir:                  filepath.Join(repoRoot, "tmp", "previews"),
 		AllowedOrigins:               splitCSV(getEnv("CAFAI_ALLOWED_ORIGINS", "http://localhost:5173")),
 		WorkerInterval:               getDurationEnv("CAFAI_WORKER_INTERVAL", 5*time.Second),
@@ -89,6 +94,9 @@ func Load() (Config, error) {
 		AzureBlobSASToken:            os.Getenv("AZURE_BLOB_SAS_TOKEN"),
 		AzureRenderURL:               os.Getenv("AZURE_RENDER_URL"),
 		AzureRenderAPIKey:            os.Getenv("AZURE_RENDER_API_KEY"),
+		HiggsfieldAPIKey:             os.Getenv("HIGGSFIELD_API_KEY"),
+		HiggsfieldAPISecret:          os.Getenv("HIGGSFIELD_API_SECRET"),
+		HiggsfieldBaseURL:            getEnv("HIGGSFIELD_BASE_URL", "https://platform.higgsfield.ai"),
 		VultrAnalysisURL:             os.Getenv("VULTR_ANALYSIS_URL"),
 		VultrAnalysisAPIKey:          os.Getenv("VULTR_ANALYSIS_API_KEY"),
 		VultrLLMURL:                  os.Getenv("VULTR_LLM_URL"),

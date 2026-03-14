@@ -83,6 +83,7 @@ func main() {
 		blobClient,
 		renderClient,
 		cfg.PreviewsDir,
+		cfg.CacheDir,
 	)
 
 	processor := worker.NewProcessor(logger, cfg.WorkerInterval)

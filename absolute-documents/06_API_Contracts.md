@@ -195,9 +195,12 @@ Response:
   "metadata": {
     "source_fps": 23.976,
     "duration_seconds": 812.5,
+    "content_language": "en",
     "repick_count": 0,
     "rejected_slot_ids": [],
-    "top_slot_ids": []
+    "top_slot_ids": [],
+    "generation_provider_used": "higgsfield",
+    "generation_fallback_used": false
   }
 }
 ```
@@ -229,11 +232,40 @@ Response:
 }
 ```
 
+### POST `/api/jobs/{job_id}/slots/manual-select`
+
+Manually create and select a slot using operator-entered seconds after analysis is complete.
+
+Request:
+
+```json
+{
+  "start_seconds": 123.45,
+  "end_seconds": 129.1
+}
+```
+
+Response:
+
+```json
+{
+  "job_id": "job_001",
+  "slot_id": "slot_job_001_manual_123450_129100",
+  "status": "analyzing",
+  "current_stage": "line_review",
+  "slot_status": "selected",
+  "suggested_product_line": "I grabbed this sparkling water on the way here.",
+  "message": "manual slot selected and product line prepared"
+}
+```
+
 ## 8. Slots
 
 ### GET `/api/jobs/{job_id}/slots`
 
 Return the currently proposed valid candidate slots.
+
+Manual slots may also appear later as selected slots with `metadata.manual = true`.
 
 Response:
 
@@ -252,6 +284,9 @@ Response:
       "score": 0.91,
       "reasoning": "low motion, 4.2-second quiet window, strong beverage context match, stable continuity anchors",
       "status": "proposed",
+      "metadata": {
+        "manual": false
+      },
       "generated_clip_path": null,
       "generation_error": null
     }
@@ -276,6 +311,13 @@ Response:
   "score": 0.91,
   "reasoning": "low motion, 4.2-second quiet window, strong beverage context match, stable continuity anchors",
   "status": "selected",
+  "metadata": {
+    "manual": true,
+    "manual_start_seconds": 123.45,
+    "manual_end_seconds": 129.1,
+    "generation_provider_used": "higgsfield",
+    "generation_fallback_used": false
+  },
   "suggested_product_line": "I grabbed this sparkling water on the way here.",
   "final_product_line": null,
   "product_line_mode": null,

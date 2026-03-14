@@ -1160,6 +1160,118 @@ func TestPhaseThreeGenerationFailureFailsJob(t *testing.T) {
 	}
 }
 
+func TestPhaseThreeGenerationFallbackRecoversAfterPrimaryPollFailure(t *testing.T) {
+	analysisClient := &fakeAnalysisClient{
+		submitRequestID: "req_phase3_fallback",
+		pollResponses: []services.AnalysisPollResponse{
+			{RequestID: "req_phase3_fallback", Status: "completed", Scenes: validAnalysisScenes()},
+		},
+	}
+	openAIClient := &fakeOpenAIClient{
+		responses: []string{
+			slotRankingContentForSuffix("phase3_fallback"),
+			`{"suggested_product_line":"I grabbed this sparkling water earlier."}`,
+			`{"generation_brief":"Silent bridge with the product introduced between anchors."}`,
+		},
+	}
+	mlClient := &fakeFallbackMLClient{
+		submitResponse: services.GenerationResponse{
+			RequestID: "higgsfield:hf_req_1",
+			Status:    "submitted",
+			Metadata: models.Metadata{
+				"generation_provider_attempted": "higgsfield",
+				"generation_provider_used":      "higgsfield",
+				"generation_fallback_used":      false,
+			},
+		},
+		pollResponses: []services.GenerationResponse{
+			{RequestID: "higgsfield:hf_req_1", Status: "failed", Message: "primary provider timeout"},
+			{
+				RequestID:         "azureml:az_req_1",
+				Status:            "completed",
+				GeneratedClipPath: "tmp/artifacts/job_fixture_phase3_fallback/slot_1.mp4",
+				Metadata: models.Metadata{
+					"generation_provider_attempted": "higgsfield",
+					"generation_provider_used":      "azureml",
+					"generation_fallback_used":      true,
+					"generation_fallback_reason":    "primary provider timeout",
+				},
+			},
+		},
+		fallbackSubmitResponse: services.GenerationResponse{
+			RequestID: "azureml:az_req_1",
+			Status:    "submitted",
+			Metadata: models.Metadata{
+				"generation_provider_attempted": "higgsfield",
+				"generation_provider_used":      "azureml",
+				"generation_fallback_used":      true,
+				"generation_fallback_reason":    "primary provider timeout",
+			},
+		},
+	}
+	env := newAPIEnvWithPhaseThreeClients(t, analysisClient, openAIClient, mlClient, &fakeAnchorFrameExtractor{})
+
+	product := insertProductFixture(t, env.database, "phase3 fallback water")
+	_, job := insertCampaignJobFixture(t, env.database, product.ID, "phase3_fallback")
+
+	env.serve(http.MethodPost, "/api/jobs/"+job.ID+"/start-analysis", nil, "")
+	if err := env.jobService.ProcessPendingAnalysis(context.Background()); err != nil {
+		t.Fatalf("ProcessPendingAnalysis() analysis error = %v", err)
+	}
+
+	slotsRec := env.serve(http.MethodGet, "/api/jobs/"+job.ID+"/slots", nil, "")
+	var slotsPayload struct {
+		Slots []models.Slot `json:"slots"`
+	}
+	decodeJSON(t, slotsRec.Body.Bytes(), &slotsPayload)
+	selectedSlot := slotsPayload.Slots[0]
+
+	selectRec := env.serve(http.MethodPost, "/api/jobs/"+job.ID+"/slots/"+selectedSlot.ID+"/select", nil, "")
+	if selectRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", selectRec.Code, selectRec.Body.String())
+	}
+	generateRec := env.serve(http.MethodPost, "/api/jobs/"+job.ID+"/slots/"+selectedSlot.ID+"/generate", []byte(`{"product_line_mode":"disabled"}`), "application/json")
+	if generateRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", generateRec.Code, generateRec.Body.String())
+	}
+
+	if err := env.jobService.ProcessPendingAnalysis(context.Background()); err != nil {
+		t.Fatalf("ProcessPendingAnalysis() generation submit error = %v", err)
+	}
+	if err := env.jobService.ProcessPendingAnalysis(context.Background()); err != nil {
+		t.Fatalf("ProcessPendingAnalysis() fallback transition error = %v", err)
+	}
+	if err := env.jobService.ProcessPendingAnalysis(context.Background()); err != nil {
+		t.Fatalf("ProcessPendingAnalysis() fallback completion error = %v", err)
+	}
+
+	jobRec := env.serve(http.MethodGet, "/api/jobs/"+job.ID, nil, "")
+	var generatedJob models.Job
+	decodeJSON(t, jobRec.Body.Bytes(), &generatedJob)
+	if generatedJob.Status != constants.JobStatusGenerating || generatedJob.CurrentStage != constants.StageGenerationPoll || generatedJob.ProgressPercent != 80 {
+		t.Fatalf("unexpected recovered job state: %#v", generatedJob)
+	}
+	if generatedJob.Metadata["generation_provider_used"] != "azureml" {
+		t.Fatalf("expected azureml provider used after fallback, got %#v", generatedJob.Metadata["generation_provider_used"])
+	}
+	if generatedJob.Metadata["generation_fallback_used"] != true {
+		t.Fatalf("expected public fallback metadata on job, got %#v", generatedJob.Metadata["generation_fallback_used"])
+	}
+
+	slotRec := env.serve(http.MethodGet, "/api/jobs/"+job.ID+"/slots/"+selectedSlot.ID, nil, "")
+	var generatedSlot models.Slot
+	decodeJSON(t, slotRec.Body.Bytes(), &generatedSlot)
+	if generatedSlot.Status != constants.SlotStatusGenerated {
+		t.Fatalf("expected generated slot after fallback, got %#v", generatedSlot)
+	}
+	if generatedSlot.Metadata["generation_provider_used"] != "azureml" {
+		t.Fatalf("expected slot metadata to record fallback provider, got %#v", generatedSlot.Metadata["generation_provider_used"])
+	}
+	if mlClient.fallbackSubmitCalls != 1 {
+		t.Fatalf("expected one fallback submit call, got %d", mlClient.fallbackSubmitCalls)
+	}
+}
+
 func TestPhaseTwoProviderFailureMarksJobFailed(t *testing.T) {
 	client := &fakeAnalysisClient{
 		submitRequestID: "req_failure",
@@ -1542,6 +1654,7 @@ func newAPIEnvWithClients(t *testing.T, analysisClient services.AnalysisClient, 
 		blobClient,
 		renderClient,
 		cfg.PreviewsDir,
+		cfg.CacheDir,
 	)
 
 	return apiEnv{
@@ -1771,6 +1884,53 @@ func (c *fakeMLClient) PollGeneration(context.Context, services.GenerationPollRe
 		c.pollResponses = c.pollResponses[1:]
 	}
 	return response, nil
+}
+
+type fakeFallbackMLClient struct {
+	submitResponse         services.GenerationResponse
+	submitErr              error
+	pollResponses          []services.GenerationResponse
+	pollErr                error
+	fallbackSubmitResponse services.GenerationResponse
+	fallbackSubmitErr      error
+	submitCalls            int
+	pollCalls              int
+	fallbackSubmitCalls    int
+	lastSubmit             services.GenerationRequest
+	lastFallbackSubmit     services.GenerationRequest
+}
+
+func (c *fakeFallbackMLClient) SubmitGeneration(_ context.Context, req services.GenerationRequest) (services.GenerationResponse, error) {
+	c.submitCalls++
+	c.lastSubmit = req
+	if c.submitErr != nil {
+		return services.GenerationResponse{}, c.submitErr
+	}
+	return c.submitResponse, nil
+}
+
+func (c *fakeFallbackMLClient) PollGeneration(context.Context, services.GenerationPollRequest) (services.GenerationResponse, error) {
+	c.pollCalls++
+	if c.pollErr != nil {
+		return services.GenerationResponse{}, c.pollErr
+	}
+	if len(c.pollResponses) == 0 {
+		return services.GenerationResponse{RequestID: c.submitResponse.RequestID, Status: "pending"}, nil
+	}
+	response := c.pollResponses[0]
+	if len(c.pollResponses) > 1 {
+		c.pollResponses = c.pollResponses[1:]
+	}
+	return response, nil
+}
+
+func (c *fakeFallbackMLClient) SubmitGenerationFallback(_ context.Context, req services.GenerationRequest, _ string) (services.GenerationResponse, error) {
+	c.fallbackSubmitCalls++
+	c.lastFallbackSubmit = req
+	if c.fallbackSubmitErr != nil {
+		return services.GenerationResponse{}, c.fallbackSubmitErr
+	}
+	return c.fallbackSubmitResponse, nil
 }
 
 type fakeAnchorFrameExtractor struct {
@@ -2389,6 +2549,7 @@ func testConfig(root string) config.Config {
 		UploadProductsDir:  filepath.Join(root, "tmp", "uploads", "products"),
 		UploadCampaignsDir: filepath.Join(root, "tmp", "uploads", "campaigns"),
 		ArtifactsDir:       filepath.Join(root, "tmp", "artifacts"),
+		CacheDir:           filepath.Join(root, "tmp", "cache"),
 		PreviewsDir:        filepath.Join(root, "tmp", "previews"),
 		AllowedOrigins:     []string{"http://localhost:5173"},
 		WorkerInterval:     5,

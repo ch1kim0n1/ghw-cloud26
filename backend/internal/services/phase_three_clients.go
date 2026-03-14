@@ -24,7 +24,13 @@ func NewPhaseThreeClient(cfg config.Config, logger *slog.Logger) (MLClient, erro
 				"phase 3 generation is enabled by design and cannot run until azure configuration is complete; set the missing environment variables before starting the server: AZURE_ML_URL",
 			)
 		}
-		return NewAzureMLClient(cfg, logger, httpClient), nil
+		azureClient := NewAzureMLClient(cfg, logger, httpClient)
+		if strings.TrimSpace(cfg.HiggsfieldAPIKey) != "" && strings.TrimSpace(cfg.HiggsfieldAPISecret) != "" {
+			blobClient := NewAzureBlobStorageClient(cfg, logger, newPhaseFourHTTPClient())
+			higgsfieldClient := NewHiggsfieldClient(cfg, logger, httpClient, blobClient)
+			return NewPriorityFallbackMLClient(GenerationProviderHiggsfield, higgsfieldClient, GenerationProviderAzureML, azureClient, logger), nil
+		}
+		return azureClient, nil
 	case ProviderProfileVultr:
 		missing := make([]string, 0)
 		for _, field := range []struct {

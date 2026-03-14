@@ -37,12 +37,13 @@ The page must communicate these truths:
 - it proposes up to the top 3 ranked insertion slots when possible
 - the operator explicitly starts analysis
 - the operator can review, reject, and re-pick slots
+- the operator can manually enter a slot window after analysis if needed
 - the operator can accept, edit, or disable the product line
 - the system generates a short context-aware bridge clip
 - the generated clip is inserted between anchor frames
 - the output is one downloadable preview MP4
 - the workflow is cloud-assisted, not purely local
-- Azure is the default product-story provider path
+- Azure is still the default product-story provider path for analysis, rendering, and fallback generation
 
 Do not imply:
 
@@ -51,7 +52,6 @@ Do not imply:
 - multiple previews per job
 - live-stream insertion
 - personalized ad targeting
-- fallback generation paths
 
 ## 4. Intended Audience
 
@@ -502,12 +502,12 @@ Section title:
 
 Section intro:
 
-- `The local control plane stays simple while analysis, generation, audio, and rendering run through Azure-backed services.`
+- `The local control plane stays simple while analysis, generation, audio, and rendering run through cloud-backed services.`
 
 Render four service cards:
 
 - `Analysis` / `Azure Video Indexer + Azure OpenAI`
-- `Generation` / `Azure ML + Azure OpenAI`
+- `Generation` / `Higgsfield Kling + Azure OpenAI, with Azure ML fallback`
 - `Audio` / `Azure AI Speech`
 - `Render` / `Azure Container Apps + Blob Storage`
 

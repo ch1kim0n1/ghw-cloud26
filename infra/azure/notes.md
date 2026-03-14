@@ -7,15 +7,19 @@ changing the startup shape.
 Expected service areas for later phases:
 - Azure Video Indexer for video analysis
 - Azure OpenAI for narrative and prompt assistance
-- Azure Machine Learning for CAFAI clip generation
+- Azure Machine Learning for CAFAI clip generation fallback
 - Azure AI Speech for spoken line synthesis and alignment
 - Azure Blob Storage for temporary artifacts
 - Azure Container Apps for ffmpeg-based preview rendering
+- Higgsfield Kling for primary Phase 3 video generation
 
 Expected environment variables:
 - `AZURE_VIDEO_INDEXER_URL`
 - `AZURE_OPENAI_URL`
 - `AZURE_ML_URL`
+- `HIGGSFIELD_API_KEY`
+- `HIGGSFIELD_API_SECRET`
+- `HIGGSFIELD_BASE_URL`
 - `AZURE_SPEECH_URL`
 - `AZURE_BLOB_URL`
 - `AZURE_RENDER_URL`

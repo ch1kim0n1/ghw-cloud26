@@ -266,6 +266,26 @@ func TestNewPhaseThreeClientReturnsAzureClientWhenConfigured(t *testing.T) {
 	}
 }
 
+func TestNewPhaseThreeClientReturnsHiggsfieldFallbackChainWhenConfigured(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	client, err := services.NewPhaseThreeClient(config.Config{
+		ProviderProfile:     services.ProviderProfileAzure,
+		AzureMLURL:          "https://ml.example.com",
+		AzureBlobURL:        "https://blob.example.com",
+		AzureBlobContainer:  "cafai",
+		AzureBlobSASToken:   "sv=test&sig=test",
+		HiggsfieldAPIKey:    "key",
+		HiggsfieldAPISecret: "secret",
+	}, logger)
+	if err != nil {
+		t.Fatalf("NewPhaseThreeClient() error = %v", err)
+	}
+	if _, ok := client.(*services.PriorityFallbackMLClient); !ok {
+		t.Fatalf("expected PriorityFallbackMLClient, got %T", client)
+	}
+}
+
 func TestNewPhaseThreeClientReturnsVultrClientWhenConfigured(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 

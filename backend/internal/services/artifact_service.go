@@ -19,6 +19,7 @@ func NewPathService(cfg config.Config) *PathService {
 			cfg.UploadProductsDir,
 			cfg.UploadCampaignsDir,
 			cfg.ArtifactsDir,
+			cfg.CacheDir,
 			cfg.PreviewsDir,
 		},
 	}

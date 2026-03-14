@@ -4,7 +4,7 @@
 This document describes the actual MVP architecture only.
 
 ## 2. Canonical MVP Architecture
-The MVP uses a local control plane and local storage for operator access, while off-loading analysis, generation, audio work, and final rendering to Azure-backed cloud compute.
+The MVP uses a local control plane and local storage for operator access, while off-loading analysis, generation, audio work, and final rendering to cloud-backed compute. The current generation path is hybrid: Higgsfield is the primary Phase 3 media generator and Azure ML remains the fallback path.
 
 ```text
 [React Dashboard]
@@ -24,8 +24,8 @@ The MVP uses a local control plane and local storage for operator access, while 
         +-----------------------+--------------------------+-----------------------+
         |                       |                                                  |
         v                       v                                                  v
-[Azure Video Indexer +   [Azure Machine Learning +                        [Azure Container Apps
- Azure OpenAI]            Azure OpenAI]                                   + Azure AI Speech
+[Azure Video Indexer +   [Higgsfield Kling + Azure OpenAI                 [Azure Container Apps
+ Azure OpenAI]            (primary) + Azure ML (fallback)]                + Azure AI Speech
   Analysis]               CAFAI Generation                                + Azure Blob Storage]
         |                       |                                                  |
         +-----------------------+--------------------------+-----------------------+
@@ -102,7 +102,8 @@ Responsibilities:
 
 ### 4.7 CAFAI Generation Layer
 Services:
-- Azure Machine Learning
+- Higgsfield Kling
+- Azure Machine Learning fallback
 - Azure OpenAI
 
 Responsibilities:
@@ -210,6 +211,7 @@ Examples:
 9. After slot selection, the system prepares a suggested product line.
 10. Operator accepts, edits, or disables the line.
 11. Worker submits CAFAI generation to Azure Machine Learning and Azure OpenAI.
+11. Worker submits CAFAI generation to Higgsfield plus Azure OpenAI, and falls back to Azure ML if the primary provider fails.
 12. If generation succeeds, artifacts are written to Azure Blob Storage.
 13. Worker submits audio alignment and ffmpeg rendering.
 14. Final preview is written to Blob and then copied back to local storage.

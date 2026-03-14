@@ -22,6 +22,7 @@ The product strategy is:
 The MVP goal is:
 - analyze a provided H.264 MP4.
 - propose valid insertion slots automatically
+- allow manual slot override after analysis when auto-ranking is insufficient
 - let the operator choose a slot and optionally edit the generated product line
 - generate a short context-aware bridge clip
 - stitch that clip into the source video with basic audio continuity
@@ -31,6 +32,7 @@ The MVP goal is:
 The engineering-facing MVP contract is:
 - supported source videos for the main MVP path are 10-20 minute H.264 MP4 files
 - the system proposes the top 3 valid anchor-frame insertion slots when possible
+- the operator can manually enter a slot window in seconds after analysis
 - the operator can reject slots and request up to 2 re-picks
 - CAFAI generation creates a 5-8 second bridge clip
 - final preview download is served from local storage
@@ -42,12 +44,13 @@ Implemented now:
 - Phase 0: foundation and runtime bootstrap
 - Phase 1: product and campaign ingest
 - Phase 2: explicit analysis start, worker polling, scene persistence, slot review, reject, and re-pick
-- Phase 3: slot selection, product-line review, and CAFAI generation state tracking
+- Phase 3: slot selection, manual slot override, Russian language-aware product-line review, provider-aware caching, and CAFAI generation state tracking
 - Phase 4: preview render start, render polling, preview persistence, playback, and download
 
 Runtime requirements:
 - Phases 2, 3, and 4 are part of the shipped app and require provider configuration before the backend will start
 - Phase 3 runtime also requires local `ffmpeg` because anchor-frame images are extracted before generation submission
+- When `HIGGSFIELD_API_KEY` and `HIGGSFIELD_API_SECRET` are set, Phase 3 generation uses Higgsfield Kling first and automatically falls back to Azure ML on failure
 - Phase 4 runtime requires Blob/Object Storage plus render service configuration because preview rendering is wired into the shipped backend startup path
 - local SQLite, uploads, and runtime directories remain part of the MVP control plane
 
@@ -64,7 +67,7 @@ Recommended reading order:
 4. [06_API_Contracts.md](absolute-documents/06_API_Contracts.md)
 5. [07_Data_Schema_Definitions.md](absolute-documents/07_Data_Schema_Definitions.md)
 6. [08_Task_Decomposition_Plan.md](absolute-documents/08_Task_Decomposition_Plan.md)
-7. [10_Phase_4_Gap_Assessment.md](absolute-documents/10_Phase_4_Gap_Assessment.md)
+7. [10_BEFORE_PHASE5_TODO.md](absolute-documents/10_BEFORE_PHASE5_TODO.md)
 
 Document purposes:
 - [01_Product_Design_Document.md](absolute-documents/01_Product_Design_Document.md): canonical MVP product behavior, constraints, and success criteria
@@ -75,7 +78,22 @@ Document purposes:
 - [06_API_Contracts.md](absolute-documents/06_API_Contracts.md): REST surface, payloads, and error envelope
 - [07_Data_Schema_Definitions.md](absolute-documents/07_Data_Schema_Definitions.md): SQLite schema, indexes, and metadata rules
 - [08_Task_Decomposition_Plan.md](absolute-documents/08_Task_Decomposition_Plan.md): ordered MVP build phases and demo acceptance checklist
-- [10_Phase_4_Gap_Assessment.md](absolute-documents/10_Phase_4_Gap_Assessment.md): current Phase 4 implementation status, remaining gaps, and completion plan
+- [10_BEFORE_PHASE5_TODO.md](absolute-documents/10_BEFORE_PHASE5_TODO.md): current Phase 4 implementation status, remaining gaps, and completion plan
+
+## Example Validation Assets
+The repo includes a concrete validation package under [`phase4-validation/`](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation):
+
+- main source video: [`phase4-validation/input/video/phase4_test.mp4`](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/input/video/phase4_test.mp4)
+- short baseline clip for repeated live validation: [`phase4-validation/input/video/phase4_test_60s.mp4`](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/input/video/phase4_test_60s.mp4)
+- product image used in the current validation pack: [`phase4-validation/input/product/product.jpg`](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/input/product/product.jpg)
+- product metadata: [`phase4-validation/input/product/metadata.json`](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/input/product/metadata.json)
+
+Current staged example product:
+- `Pepsi Cola`
+- category: `beverage`
+- source URL: `https://www.pepsi.com`
+
+Use the 60-second clip for cheap, repeatable provider validation. Use the full source only after Phase 3 and Phase 4 are behaving correctly on the short baseline.
 
 ## Architecture At A Glance
 The documented MVP architecture is:
@@ -85,7 +103,7 @@ The documented MVP architecture is:
 - local filesystem for uploads, debug artifacts, and final preview download
 - a polling worker as the MVP async mechanism
 - Azure Video Indexer + Azure OpenAI for analysis
-- Azure Machine Learning + Azure OpenAI for CAFAI generation
+- Higgsfield Kling + Azure OpenAI for primary CAFAI generation, with Azure ML retained as fallback
 - Azure AI Speech + Azure Container Apps + Azure Blob Storage for audio/rendering and temporary artifacts
 
 Canonical job flow:
@@ -93,7 +111,7 @@ Canonical job flow:
 2. create a campaign and upload the source video
 3. explicitly start analysis
 4. review proposed insertion slots
-5. select a slot and review/edit the product line
+5. select a proposed slot or manually enter a slot window, then review/edit the product line
 6. generate a CAFAI bridge clip
 7. render one preview MP4
 8. download the final preview from local storage
@@ -119,7 +137,7 @@ The documented MVP API base path is `/api`, with snake_case JSON and no auth in 
 
 Current implementation status:
 - `GET /api/health` is live
-- products, campaigns, jobs, analysis start, slot list/detail, slot select, slot reject, slot re-pick, and slot generate are implemented
+- products, campaigns, jobs, analysis start, slot list/detail, slot select, manual slot select, slot reject, slot re-pick, and slot generate are implemented
 - preview render, preview status, preview streaming, and preview download routes are implemented
 
 Planned MVP route groups from the docs:
@@ -127,7 +145,7 @@ Planned MVP route groups from the docs:
 - campaigns: `POST /api/campaigns`, `GET /api/campaigns/{campaign_id}`
 - jobs: `GET /api/jobs/{job_id}`, `GET /api/jobs/{job_id}/logs`
 - analysis: `POST /api/jobs/{job_id}/start-analysis`
-- slots: list, detail, select, reject, re-pick, and generate under `/api/jobs/{job_id}/slots`
+- slots: list, detail, select, manual-select, reject, re-pick, and generate under `/api/jobs/{job_id}/slots`
 - preview: render, status, and download under `/api/jobs/{job_id}/preview`
 
 Standard API errors follow one envelope with:
@@ -170,7 +188,7 @@ The rule of execution in the docs is to finish the MVP end to end before any pos
 ## Azure Service Choices
 The current MVP stack assumes:
 - analysis: Azure Video Indexer + Azure OpenAI
-- CAFAI generation: Azure Machine Learning + Azure OpenAI
+- CAFAI generation: Higgsfield Kling + Azure OpenAI as primary, Azure ML as fallback
 - audio generation and alignment: Azure AI Speech
 - final render: Azure Container Apps running ffmpeg, with Azure Blob Storage for intermediate artifacts
 
@@ -217,9 +235,12 @@ Phase 2 is implemented with:
 
 Phase 3 is implemented with:
 - slot selection and suggested product-line generation
+- manual slot selection by operator-entered start/end seconds
 - anchor-frame image extraction for generation inputs
 - dashboard product-line review with `auto`, `operator`, and `disabled` modes
-- worker-driven CAFAI generation submission and polling using Azure Machine Learning plus Azure OpenAI
+- Russian content-language detection and propagation into suggested lines and generation briefs
+- worker-driven CAFAI generation submission and polling using Higgsfield Kling first, then Azure ML fallback when configured
+- provider-aware generation caching for repeated clip + product runs
 - generated artifact metadata persisted on the selected slot
 - generation failures surfaced clearly on both job and slot state
 
@@ -232,4 +253,4 @@ Phase 4 is implemented with:
 - dashboard preview status, open, and download actions
 
 Phase 4 remaining work is tracked in:
-- [10_Phase_4_Gap_Assessment.md](absolute-documents/10_Phase_4_Gap_Assessment.md)
+- [10_BEFORE_PHASE5_TODO.md](absolute-documents/10_BEFORE_PHASE5_TODO.md)

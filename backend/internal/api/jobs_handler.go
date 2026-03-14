@@ -70,5 +70,6 @@ func newJobService(deps Dependencies) *services.JobService {
 		blobClient,
 		renderClient,
 		deps.Config.PreviewsDir,
+		deps.Config.CacheDir,
 	)
 }

@@ -2,11 +2,13 @@ package services
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/ch1kim0n1/ghw-cloud26/backend/internal/constants"
@@ -103,7 +105,7 @@ func (s *JobService) SelectSlot(ctx context.Context, jobID, slotID string) (mode
 		}, db.ErrNotFound)
 	}
 
-	suggestedLine, requestID, err := s.generateSuggestedProductLine(ctx, job.ID, product, scene, slot, metadataString(job.Metadata, "content_language"))
+	suggestedLine, requestID, err := s.generateSuggestedProductLine(ctx, job.ID, campaign, product, scene, slot, metadataString(job.Metadata, "content_language"))
 	if err != nil {
 		return models.Job{}, models.Slot{}, NewAppError(http.StatusInternalServerError, constants.ErrorCodeGenerationFailed, "failed to prepare suggested product line", map[string]any{
 			"job_id":  jobID,
@@ -281,7 +283,7 @@ func (s *JobService) SelectManualSlot(ctx context.Context, jobID string, startSe
 	slotScore := roundScore(stabilityScore*0.35 + quietWindowScore*0.25 + float64(narrativeFitScore)*0.20 + float64(anchorContinuityScore)*0.15 + float64(contextRelevanceScore)*0.05)
 
 	slotID := fmt.Sprintf("slot_%s_manual_%d_%d", jobID, int(math.Round(startSeconds*1000)), int(math.Round(endSeconds*1000)))
-	suggestedLine, requestID, err := s.generateSuggestedProductLine(ctx, job.ID, product, scene, models.Slot{
+	suggestedLine, requestID, err := s.generateSuggestedProductLine(ctx, job.ID, campaign, product, scene, models.Slot{
 		ID:                 slotID,
 		JobID:              jobID,
 		SceneID:            scene.ID,
@@ -517,6 +519,29 @@ func (s *JobService) processGenerationSubmission(ctx context.Context, job models
 		return s.failGenerationJob(ctx, job, slot.ID, constants.StageGenerationSubmit, "selected slot scene is missing")
 	}
 
+	contentLanguage := metadataString(job.Metadata, "content_language")
+	videoHash, productHash, fingerprintErr := s.cacheFingerprints(campaign, product)
+	if fingerprintErr != nil {
+		return s.failGenerationJob(ctx, job, slot.ID, constants.StageGenerationSubmit, summarizeProviderFailure("generation cache fingerprint failed", fingerprintErr))
+	}
+	cacheKeys := generationOutputCacheKeys(s.mlClient, s.cache, videoHash, productHash, scene, slot, contentLanguage, strings.TrimSpace(stringValueOrDefault(slot.FinalProductLine)))
+	for _, generationOutputCacheKey := range cacheKeys {
+		if cachedOutput, ok, cacheErr := s.cache.LoadGenerationOutput(generationOutputCacheKey); cacheErr != nil {
+			return s.failGenerationJob(ctx, job, slot.ID, constants.StageGenerationSubmit, summarizeProviderFailure("generation output cache read failed", cacheErr))
+		} else if ok && cachedOutput.GeneratedClipPath != "" {
+			if _, statErr := os.Stat(cachedOutput.GeneratedClipPath); statErr == nil {
+				return s.persistCompletedGeneration(ctx, job, slot, GenerationResponse{
+					RequestID:          "cache",
+					Status:             "completed",
+					GeneratedClipPath:  cachedOutput.GeneratedClipPath,
+					GeneratedAudioPath: cachedOutput.GeneratedAudioPath,
+					PayloadRef:         "cache:" + generationOutputCacheKey,
+					Metadata:           cloneMetadata(cachedOutput.Metadata),
+				})
+			}
+		}
+	}
+
 	anchorFrames, err := s.frameExtractor.Extract(ctx, AnchorFrameRequest{
 		JobID:            job.ID,
 		SlotID:           slot.ID,
@@ -529,13 +554,12 @@ func (s *JobService) processGenerationSubmission(ctx context.Context, job models
 		return s.failGenerationJob(ctx, job, slot.ID, constants.StageGenerationSubmit, "anchor frame extraction failed")
 	}
 
-	contentLanguage := metadataString(job.Metadata, "content_language")
-	generationBrief, generationBriefRequestID, err := s.generateGenerationBrief(ctx, job.ID, product, scene, slot, anchorFrames, contentLanguage)
+	generationBrief, generationBriefRequestID, err := s.generateGenerationBrief(ctx, job.ID, campaign, product, scene, slot, anchorFrames, contentLanguage)
 	if err != nil {
-		return s.failGenerationJob(ctx, job, slot.ID, constants.StageGenerationSubmit, "generation brief preparation failed")
+		return s.failGenerationJob(ctx, job, slot.ID, constants.StageGenerationSubmit, summarizeProviderFailure("generation brief preparation failed", err))
 	}
 
-	response, err := s.mlClient.SubmitGeneration(ctx, GenerationRequest{
+	generationRequest := GenerationRequest{
 		JobID:                   job.ID,
 		SlotID:                  slot.ID,
 		CampaignID:              campaign.ID,
@@ -562,9 +586,11 @@ func (s *JobService) processGenerationSubmission(ctx context.Context, job models
 		ContentLanguage:         contentLanguage,
 		SelectedSlotReasoning:   slot.Reasoning,
 		SelectedSlotQuietWindow: slot.QuietWindowSeconds,
-	})
+	}
+
+	response, err := s.mlClient.SubmitGeneration(ctx, generationRequest)
 	if err != nil {
-		return s.failGenerationJob(ctx, job, slot.ID, constants.StageGenerationSubmit, "generation submission failed")
+		return s.failGenerationJob(ctx, job, slot.ID, constants.StageGenerationSubmit, summarizeProviderFailure("generation submission failed", err))
 	}
 
 	switch strings.ToLower(strings.TrimSpace(response.Status)) {
@@ -592,8 +618,12 @@ func (s *JobService) processGenerationSubmission(ctx context.Context, job models
 		return err
 	}
 	current.Metadata = ensureJobMetadata(current.Metadata)
+	setGenerationProviderMetadata(current.Metadata, response.Metadata)
 	if generationBriefRequestID != "" {
 		current.Metadata[internalGenerationBriefRequestIDKey] = generationBriefRequestID
+	}
+	if requestSnapshot, snapshotErr := encodeGenerationRequestSnapshot(generationRequest); snapshotErr == nil {
+		current.Metadata[internalGenerationRequestSnapshotKey] = requestSnapshot
 	}
 	current.Metadata[internalGenerationRequestIDKey] = response.RequestID
 	if response.PayloadRef != "" {
@@ -615,7 +645,10 @@ func (s *JobService) processGenerationSubmission(ctx context.Context, job models
 		return err
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *JobService) processGenerationPoll(ctx context.Context, job models.Job) error {
@@ -643,6 +676,10 @@ func (s *JobService) processGenerationPoll(ctx context.Context, job models.Job) 
 		RequestID: requestID,
 	})
 	if err != nil {
+		fallbackHandled, fallbackErr := s.tryGenerationFallback(ctx, job, slot, fmt.Sprintf("generation polling failed: %v", err))
+		if fallbackHandled || fallbackErr != nil {
+			return fallbackErr
+		}
 		return s.failGenerationJob(ctx, job, slot.ID, constants.StageGenerationPoll, "generation polling failed")
 	}
 
@@ -653,6 +690,10 @@ func (s *JobService) processGenerationPoll(ctx context.Context, job models.Job) 
 		message := strings.TrimSpace(response.Message)
 		if message == "" {
 			message = "generation failed"
+		}
+		fallbackHandled, fallbackErr := s.tryGenerationFallback(ctx, job, slot, message)
+		if fallbackHandled || fallbackErr != nil {
+			return fallbackErr
 		}
 		return s.failGenerationJob(ctx, job, slot.ID, constants.StageGenerationPoll, message)
 	case "completed", "succeeded":
@@ -684,9 +725,11 @@ func (s *JobService) persistCompletedGeneration(ctx context.Context, job models.
 
 	current.Metadata = ensureJobMetadata(current.Metadata)
 	delete(current.Metadata, internalGenerationRequestIDKey)
+	delete(current.Metadata, internalGenerationRequestSnapshotKey)
 	if response.PayloadRef != "" {
 		current.Metadata[internalGenerationPayloadRef] = response.PayloadRef
 	}
+	setGenerationProviderMetadata(current.Metadata, response.Metadata)
 
 	slotMetadata := sanitizeGenerationMetadata(currentSlot.Metadata, response.Metadata)
 	clipPath := ptrIfNotEmpty(response.GeneratedClipPath)
@@ -714,7 +757,11 @@ func (s *JobService) persistCompletedGeneration(ctx context.Context, job models.
 		return err
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	_ = s.saveGenerationOutputCache(ctx, current, currentSlot, clipPath, audioPath, slotMetadata)
+	return nil
 }
 
 func (s *JobService) failGenerationJob(ctx context.Context, job models.Job, slotID, stage, message string) error {
@@ -732,6 +779,9 @@ func (s *JobService) failGenerationJob(ctx context.Context, job models.Job, slot
 	if err != nil {
 		return err
 	}
+	current.Metadata = ensureJobMetadata(current.Metadata)
+	delete(current.Metadata, internalGenerationRequestIDKey)
+	delete(current.Metadata, internalGenerationRequestSnapshotKey)
 
 	if slotID == "" && current.SelectedSlotID != nil {
 		slotID = *current.SelectedSlotID
@@ -770,7 +820,100 @@ func (s *JobService) failGenerationJob(ctx context.Context, job models.Job, slot
 	return tx.Commit()
 }
 
-func (s *JobService) generateSuggestedProductLine(ctx context.Context, jobID string, product models.Product, scene models.Scene, slot models.Slot, contentLanguage string) (string, string, error) {
+func (s *JobService) tryGenerationFallback(ctx context.Context, job models.Job, slot models.Slot, reason string) (bool, error) {
+	if metadataString(job.Metadata, "generation_provider_used") != GenerationProviderHiggsfield {
+		return false, nil
+	}
+	if metadataBool(job.Metadata, "generation_fallback_used") {
+		return false, nil
+	}
+
+	fallbackClient, ok := s.mlClient.(FallbackGenerationSubmitter)
+	if !ok {
+		return false, nil
+	}
+
+	requestSnapshot := metadataString(job.Metadata, internalGenerationRequestSnapshotKey)
+	if requestSnapshot == "" {
+		return false, nil
+	}
+	generationRequest, err := decodeGenerationRequestSnapshot(requestSnapshot)
+	if err != nil {
+		return false, s.failGenerationJob(ctx, job, slot.ID, constants.StageGenerationPoll, summarizeProviderFailure("generation fallback request decode failed", err))
+	}
+
+	response, err := fallbackClient.SubmitGenerationFallback(ctx, generationRequest, reason)
+	if err != nil {
+		return false, s.failGenerationJob(ctx, job, slot.ID, constants.StageGenerationPoll, summarizeProviderFailure("generation fallback submission failed", err))
+	}
+
+	switch strings.ToLower(strings.TrimSpace(response.Status)) {
+	case "completed", "succeeded":
+		return true, s.persistCompletedGeneration(ctx, job, slot, response)
+	case "failed", "error":
+		message := strings.TrimSpace(response.Message)
+		if message == "" {
+			message = "generation fallback failed"
+		}
+		return false, s.failGenerationJob(ctx, job, slot.ID, constants.StageGenerationPoll, message)
+	}
+
+	tx, beginErr := s.database.BeginTx(ctx, nil)
+	if beginErr != nil {
+		return false, beginErr
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	jobRepo := db.NewJobsRepository(tx)
+	logRepo := db.NewJobLogsRepository(tx)
+
+	current, err := jobRepo.GetByID(ctx, job.ID)
+	if err != nil {
+		return false, err
+	}
+	current.Metadata = ensureJobMetadata(current.Metadata)
+	setGenerationProviderMetadata(current.Metadata, response.Metadata)
+	current.Metadata[internalGenerationRequestIDKey] = response.RequestID
+	if response.PayloadRef != "" {
+		current.Metadata[internalGenerationPayloadRef] = response.PayloadRef
+	}
+	current.Status = constants.JobStatusGenerating
+	current.CurrentStage = constants.StageGenerationPoll
+	current.ProgressPercent = 40
+	current.ErrorCode = nil
+	current.ErrorMessage = nil
+	current.CompletedAt = nil
+	if err := jobRepo.UpdateState(ctx, current); err != nil {
+		return false, err
+	}
+	if err := logRepo.Insert(ctx, models.JobLog{
+		JobID:     current.ID,
+		Timestamp: TimestampNow(),
+		EventType: "stage_started",
+		StageName: constants.StageGenerationPoll,
+		Message:   "submitted generation fallback request",
+	}); err != nil {
+		return false, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (s *JobService) generateSuggestedProductLine(ctx context.Context, jobID string, campaign models.Campaign, product models.Product, scene models.Scene, slot models.Slot, contentLanguage string) (string, string, error) {
+	videoHash, productHash, err := s.cacheFingerprints(campaign, product)
+	if err != nil {
+		return "", "", err
+	}
+	cacheKey := s.cache.PromptKey("suggested-line", videoHash, productHash, cacheSceneKey(scene), cacheSlotKey(slot), contentLanguage)
+	if cachedLine, ok, cacheErr := s.cache.LoadSuggestedLine(cacheKey); cacheErr != nil {
+		return "", "", cacheErr
+	} else if ok {
+		return cachedLine, "cache", nil
+	}
+
 	prompt, err := buildSuggestedProductLinePrompt(product, scene, slot, contentLanguage)
 	if err != nil {
 		return "", "", err
@@ -791,10 +934,34 @@ func (s *JobService) generateSuggestedProductLine(ctx context.Context, jobID str
 	if err != nil {
 		return "", response.RequestID, err
 	}
+	if err := s.cache.SaveSuggestedLine(cacheKey, line); err != nil {
+		return "", response.RequestID, err
+	}
 	return line, response.RequestID, nil
 }
 
-func (s *JobService) generateGenerationBrief(ctx context.Context, jobID string, product models.Product, scene models.Scene, slot models.Slot, anchors AnchorFrameArtifacts, contentLanguage string) (string, string, error) {
+func (s *JobService) generateGenerationBrief(ctx context.Context, jobID string, campaign models.Campaign, product models.Product, scene models.Scene, slot models.Slot, anchors AnchorFrameArtifacts, contentLanguage string) (string, string, error) {
+	videoHash, productHash, err := s.cacheFingerprints(campaign, product)
+	if err != nil {
+		return "", "", err
+	}
+	cacheKey := s.cache.PromptKey(
+		"generation-brief",
+		videoHash,
+		productHash,
+		cacheSceneKey(scene),
+		cacheSlotKey(slot),
+		contentLanguage,
+		strings.TrimSpace(stringValueOrDefault(slot.ProductLineMode)),
+		strings.TrimSpace(stringValueOrDefault(slot.SuggestedProductLine)),
+		strings.TrimSpace(stringValueOrDefault(slot.FinalProductLine)),
+	)
+	if cachedBrief, ok, cacheErr := s.cache.LoadGenerationBrief(cacheKey); cacheErr != nil {
+		return "", "", cacheErr
+	} else if ok {
+		return cachedBrief, "cache", nil
+	}
+
 	prompt, err := buildGenerationBriefPrompt(product, scene, slot, anchors, contentLanguage)
 	if err != nil {
 		return "", "", err
@@ -813,6 +980,9 @@ func (s *JobService) generateGenerationBrief(ctx context.Context, jobID string, 
 
 	brief, err := parseGenerationBrief(response.Content)
 	if err != nil {
+		return "", response.RequestID, err
+	}
+	if err := s.cache.SaveGenerationBrief(cacheKey, brief); err != nil {
 		return "", response.RequestID, err
 	}
 	return brief, response.RequestID, nil
@@ -924,51 +1094,28 @@ func generationBriefSystemPrompt(contentLanguage string) string {
 }
 
 func parseSuggestedProductLine(content string) (string, error) {
-	trimmed := strings.TrimSpace(content)
-	trimmed = strings.TrimPrefix(trimmed, "```json")
-	trimmed = strings.TrimPrefix(trimmed, "```")
-	trimmed = strings.TrimSuffix(trimmed, "```")
-	trimmed = strings.TrimSpace(trimmed)
-
-	var envelope suggestedProductLineEnvelope
-	if strings.HasPrefix(trimmed, "{") {
-		if err := json.Unmarshal([]byte(trimmed), &envelope); err != nil {
-			return "", fmt.Errorf("decode suggested product line response: %w", err)
-		}
-		trimmed = envelope.SuggestedProductLine
-	}
-
-	trimmed = strings.TrimSpace(trimmed)
-	trimmed = strings.Trim(trimmed, "\"")
-	if trimmed == "" {
-		return "", fmt.Errorf("suggested product line response was empty")
-	}
-	return trimmed, nil
+	return parseLLMTextResponse(content, "suggested_product_line", "product_line", "line")
 }
 
 func parseGenerationBrief(content string) (string, error) {
-	trimmed := strings.TrimSpace(content)
-	trimmed = strings.TrimPrefix(trimmed, "```json")
-	trimmed = strings.TrimPrefix(trimmed, "```")
-	trimmed = strings.TrimSuffix(trimmed, "```")
-	trimmed = strings.TrimSpace(trimmed)
+	return parseLLMTextResponse(content, "generation_brief", "brief", "content")
+}
 
-	var envelope struct {
-		GenerationBrief string `json:"generation_brief"`
+func setGenerationProviderMetadata(target models.Metadata, provider models.Metadata) {
+	if target == nil {
+		return
 	}
-	if strings.HasPrefix(trimmed, "{") {
-		if err := json.Unmarshal([]byte(trimmed), &envelope); err != nil {
-			return "", fmt.Errorf("decode generation brief response: %w", err)
+	for _, key := range []string{
+		"generation_provider_attempted",
+		"generation_provider_used",
+		"generation_fallback_used",
+		"generation_fallback_reason",
+		"higgsfield_model_id",
+	} {
+		if value, ok := provider[key]; ok {
+			target[key] = value
 		}
-		trimmed = envelope.GenerationBrief
 	}
-
-	trimmed = strings.TrimSpace(trimmed)
-	trimmed = strings.Trim(trimmed, "\"")
-	if trimmed == "" {
-		return "", fmt.Errorf("generation brief response was empty")
-	}
-	return trimmed, nil
 }
 
 func resolveFinalProductLine(slot models.Slot, productLineMode, customProductLine string) (*string, string, error) {
@@ -1046,4 +1193,168 @@ func stringValueOrDefault(value *string) string {
 		return ""
 	}
 	return *value
+}
+
+func parseLLMTextResponse(content string, preferredKeys ...string) (string, error) {
+	trimmed := strings.TrimSpace(content)
+	trimmed = strings.TrimPrefix(trimmed, "```json")
+	trimmed = strings.TrimPrefix(trimmed, "```")
+	trimmed = strings.TrimSuffix(trimmed, "```")
+	trimmed = strings.TrimSpace(trimmed)
+	if trimmed == "" {
+		return "", fmt.Errorf("llm response was empty")
+	}
+
+	var decoded any
+	if strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[") {
+		if err := json.Unmarshal([]byte(trimmed), &decoded); err == nil {
+			if text := extractTextFromLLMResponse(decoded, preferredKeys...); text != "" {
+				return text, nil
+			}
+		}
+	}
+
+	fallback := strings.TrimSpace(strings.Trim(trimmed, "\""))
+	if fallback == "" {
+		return "", fmt.Errorf("llm response was empty after normalization")
+	}
+	return fallback, nil
+}
+
+func extractTextFromLLMResponse(value any, preferredKeys ...string) string {
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(strings.Trim(typed, "\""))
+	case map[string]any:
+		for _, key := range preferredKeys {
+			if extracted := extractTextFromLLMResponse(typed[key], preferredKeys...); extracted != "" {
+				return extracted
+			}
+		}
+		for _, key := range []string{"message", "text", "output"} {
+			if extracted := extractTextFromLLMResponse(typed[key], preferredKeys...); extracted != "" {
+				return extracted
+			}
+		}
+	case []any:
+		for _, item := range typed {
+			if extracted := extractTextFromLLMResponse(item, preferredKeys...); extracted != "" {
+				return extracted
+			}
+		}
+	}
+	return ""
+}
+
+func (s *JobService) saveGenerationOutputCache(ctx context.Context, job models.Job, slot models.Slot, clipPath, audioPath *string, metadata models.Metadata) error {
+	if !s.cache.Enabled() || clipPath == nil || *clipPath == "" {
+		return nil
+	}
+	campaign, err := s.campaignRepository.GetByID(ctx, job.CampaignID)
+	if err != nil {
+		return err
+	}
+	product, err := s.productsRepository.GetByID(ctx, campaign.ProductID)
+	if err != nil {
+		return err
+	}
+	scenes, err := s.scenesRepository.ListByJobID(ctx, job.ID)
+	if err != nil {
+		return err
+	}
+	scene, ok := findSceneByID(scenes, slot.SceneID)
+	if !ok {
+		return nil
+	}
+	videoHash, productHash, err := s.cacheFingerprints(campaign, product)
+	if err != nil {
+		return err
+	}
+	cacheProvider := strings.TrimSpace(metadataString(metadata, "generation_provider_used"))
+	if cacheProvider == "" {
+		providers := generationCacheProviderNames(s.mlClient)
+		cacheProvider = providers[0]
+	}
+	cacheKey := generationOutputCacheKey(
+		s.cache,
+		cacheProvider,
+		videoHash,
+		productHash,
+		scene,
+		slot,
+		metadataString(job.Metadata, "content_language"),
+		strings.TrimSpace(stringValueOrDefault(slot.FinalProductLine)),
+	)
+	return s.cache.SaveGenerationOutput(cacheKey, cachedGenerationOutput{
+		GeneratedClipPath:  stringValueOrDefault(clipPath),
+		GeneratedAudioPath: stringValueOrDefault(audioPath),
+		Metadata:           cloneMetadata(metadata),
+	})
+}
+
+func generationOutputCacheKeys(client MLClient, cache *ProviderCache, videoHash, productHash string, scene models.Scene, slot models.Slot, contentLanguage, finalProductLine string) []string {
+	keys := make([]string, 0, len(generationCacheProviderNames(client)))
+	for _, provider := range generationCacheProviderNames(client) {
+		keys = append(keys, generationOutputCacheKey(cache, provider, videoHash, productHash, scene, slot, contentLanguage, finalProductLine))
+	}
+	return keys
+}
+
+func generationOutputCacheKey(cache *ProviderCache, provider, videoHash, productHash string, scene models.Scene, slot models.Slot, contentLanguage, finalProductLine string) string {
+	return cache.PromptKey(
+		"generation-output",
+		provider,
+		videoHash,
+		productHash,
+		cacheSceneKey(scene),
+		cacheSlotKey(slot),
+		contentLanguage,
+		finalProductLine,
+	)
+}
+
+func generationCacheProviderNames(client MLClient) []string {
+	switch typed := client.(type) {
+	case *PriorityFallbackMLClient:
+		return []string{typed.primaryName, typed.fallbackName}
+	case *HiggsfieldClient:
+		return []string{GenerationProviderHiggsfield}
+	case *AzureMLClient:
+		return []string{GenerationProviderAzureML}
+	case *VultrGenerationClient:
+		return []string{GenerationProviderVultr}
+	default:
+		return []string{"default"}
+	}
+}
+
+func encodeGenerationRequestSnapshot(req GenerationRequest) (string, error) {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(body), nil
+}
+
+func decodeGenerationRequestSnapshot(value string) (GenerationRequest, error) {
+	body, err := base64.StdEncoding.DecodeString(strings.TrimSpace(value))
+	if err != nil {
+		return GenerationRequest{}, err
+	}
+	var req GenerationRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		return GenerationRequest{}, err
+	}
+	return req, nil
+}
+
+func metadataBool(metadata models.Metadata, key string) bool {
+	switch value := metadata[key].(type) {
+	case bool:
+		return value
+	case string:
+		return strings.EqualFold(strings.TrimSpace(value), "true")
+	default:
+		return false
+	}
 }

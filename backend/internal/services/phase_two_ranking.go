@@ -66,7 +66,21 @@ func defaultSlotRankingThresholds() slotRankingThresholds {
 	}
 }
 
-func (s *JobService) rankSlotsWithOpenAI(ctx context.Context, jobID string, sourceFPS float64, product models.Product, scenes []models.Scene, rejectedSlotIDs []string) ([]models.Slot, string, error) {
+func (s *JobService) rankSlotsWithOpenAI(ctx context.Context, jobID string, sourceFPS float64, videoHash, productHash string, product models.Product, scenes []models.Scene, rejectedSlotIDs []string) ([]models.Slot, string, error) {
+	if s.cache.Enabled() && videoHash != "" && productHash != "" {
+		templates, ok, err := s.cache.LoadRanking(videoHash, productHash)
+		if err != nil {
+			return nil, "", err
+		}
+		if ok {
+			slots := rehydrateCachedSlots(jobID, sourceFPS, scenes, templates)
+			filtered := filterRejectedSlots(slots, rejectedSlotIDs)
+			if len(filtered) > 0 {
+				return filtered, "cache", nil
+			}
+		}
+	}
+
 	requestPayload, err := buildSlotRankingPrompt(jobID, sourceFPS, product, scenes, rejectedSlotIDs)
 	if err != nil {
 		return nil, "", fmt.Errorf("build slot ranking prompt: %w", err)
@@ -92,7 +106,33 @@ func (s *JobService) rankSlotsWithOpenAI(ctx context.Context, jobID string, sour
 	if len(slots) == 0 {
 		slots = rankSlots(jobID, sourceFPS, product, scenes, rejectedSlotIDs)
 	}
+	if s.cache.Enabled() && videoHash != "" && productHash != "" && len(slots) > 0 {
+		if err := s.cache.SaveRanking(videoHash, productHash, buildCachedSlotTemplates(slots, scenes)); err != nil {
+			return nil, "", err
+		}
+	}
 	return slots, response.RequestID, nil
+}
+
+func filterRejectedSlots(slots []models.Slot, rejectedSlotIDs []string) []models.Slot {
+	if len(rejectedSlotIDs) == 0 {
+		return slots
+	}
+	rejectedSet := make(map[string]struct{}, len(rejectedSlotIDs))
+	for _, id := range rejectedSlotIDs {
+		rejectedSet[id] = struct{}{}
+	}
+	filtered := make([]models.Slot, 0, len(slots))
+	for _, slot := range slots {
+		if _, rejected := rejectedSet[slot.ID]; rejected {
+			continue
+		}
+		filtered = append(filtered, slot)
+	}
+	for index := range filtered {
+		filtered[index].Rank = index + 1
+	}
+	return filtered
 }
 
 func buildSlotRankingPrompt(jobID string, sourceFPS float64, product models.Product, scenes []models.Scene, rejectedSlotIDs []string) (string, error) {

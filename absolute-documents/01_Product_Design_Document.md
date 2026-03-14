@@ -201,7 +201,7 @@ Cloud compute is used for:
 The MVP documentation assumes:
 
 - analysis: Azure Video Indexer + Azure OpenAI
-- CAFAI generation: Azure Machine Learning + Azure OpenAI
+- CAFAI generation: Higgsfield Kling + Azure OpenAI as primary, Azure Machine Learning as fallback
 - audio generation and alignment: Azure AI Speech
 - final render: Azure Container Apps running ffmpeg + Azure Blob Storage for temporary artifacts
 
@@ -213,7 +213,6 @@ The MVP does not attempt to solve:
 - multi-tenant architecture
 - live streaming playback integration
 - runtime-neutral insertion
-- fallback generation paths
 - advanced photorealistic quality guarantees
 - legal or licensing workflows
 - personalized ad targeting

@@ -16,14 +16,15 @@ import (
 )
 
 const (
-	internalAnalysisRequestIDKey        = "analysis_request_id"
-	internalAnalysisPayloadRef          = "analysis_payload_ref"
-	internalProductLineRequestIDKey     = "product_line_request_id"
-	internalGenerationBriefRequestIDKey = "generation_brief_request_id"
-	internalGenerationRequestIDKey      = "generation_request_id"
-	internalGenerationPayloadRef        = "generation_payload_ref"
-	internalRenderRequestIDKey          = "render_request_id"
-	internalRenderPayloadRef            = "render_payload_ref"
+	internalAnalysisRequestIDKey         = "analysis_request_id"
+	internalAnalysisPayloadRef           = "analysis_payload_ref"
+	internalProductLineRequestIDKey      = "product_line_request_id"
+	internalGenerationBriefRequestIDKey  = "generation_brief_request_id"
+	internalGenerationRequestIDKey       = "generation_request_id"
+	internalGenerationRequestSnapshotKey = "generation_request_snapshot"
+	internalGenerationPayloadRef         = "generation_payload_ref"
+	internalRenderRequestIDKey           = "render_request_id"
+	internalRenderPayloadRef             = "render_payload_ref"
 )
 
 type JobService struct {
@@ -43,6 +44,7 @@ type JobService struct {
 	blobClient         BlobStorageClient
 	renderClient       RenderClient
 	previewDir         string
+	cache              *ProviderCache
 }
 
 func NewJobService(
@@ -62,6 +64,7 @@ func NewJobService(
 	blobClient BlobStorageClient,
 	renderClient RenderClient,
 	previewDir string,
+	cacheDir string,
 ) *JobService {
 	return &JobService{
 		database:           database,
@@ -80,6 +83,7 @@ func NewJobService(
 		blobClient:         blobClient,
 		renderClient:       renderClient,
 		previewDir:         previewDir,
+		cache:              NewProviderCache(cacheDir),
 	}
 }
 
@@ -606,8 +610,14 @@ func (s *JobService) RequestRepick(ctx context.Context, jobID string) (models.Jo
 	job.Metadata["rejected_slot_ids"] = rejectedIDs
 	nextRepickCount := metadataRepickCount(job.Metadata) + 1
 	job.Metadata["repick_count"] = nextRepickCount
+	videoHash, productHash, fingerprintErr := s.cacheFingerprints(campaign, product)
+	if fingerprintErr != nil {
+		return models.Job{}, DatabaseFailure("failed to prepare cache fingerprints", map[string]any{
+			"job_id": jobID,
+		}, fingerprintErr)
+	}
 
-	slots, rankingRequestID, rankErr := s.rankSlotsWithOpenAI(ctx, job.ID, metadataFloat(job.Metadata, "source_fps"), product, scenes, rejectedIDs)
+	slots, rankingRequestID, rankErr := s.rankSlotsWithOpenAI(ctx, job.ID, metadataFloat(job.Metadata, "source_fps"), videoHash, productHash, product, scenes, rejectedIDs)
 	if rankErr != nil {
 		if failErr := s.failAnalysisJob(ctx, job, constants.StageSlotSelection, "slot re-pick failed"); failErr != nil {
 			return models.Job{}, failErr
@@ -770,6 +780,27 @@ func (s *JobService) processAnalysisSubmission(ctx context.Context, job models.J
 	if err != nil {
 		return err
 	}
+	videoHash, productHash, fingerprintErr := s.cacheFingerprints(campaign, product)
+	if fingerprintErr != nil {
+		return fingerprintErr
+	}
+	if cachedAnalysis, ok, cacheErr := s.cache.LoadAnalysis(videoHash); cacheErr != nil {
+		return cacheErr
+	} else if ok {
+		normalizedScenes := normalizeScenes(job.ID, cachedAnalysis.Scenes)
+		response := AnalysisPollResponse{
+			RequestID:  "cache",
+			Status:     "completed",
+			Scenes:     normalizedScenes,
+			PayloadRef: firstNonEmptyString(cachedAnalysis.PayloadRef, "cache:"+videoHash),
+			Metadata:   cloneMetadata(cachedAnalysis.Metadata),
+		}
+		slots, rankingRequestID, rankErr := s.rankSlotsWithOpenAI(ctx, job.ID, metadataFloat(job.Metadata, "source_fps"), videoHash, productHash, product, normalizedScenes, stringSliceMetadata(job.Metadata, "rejected_slot_ids"))
+		if rankErr != nil {
+			return s.failAnalysisJob(ctx, job, constants.StageAnalysisSubmission, summarizeProviderFailure("slot ranking failed", rankErr))
+		}
+		return s.persistCompletedAnalysis(ctx, job, normalizedScenes, slots, response, rankingRequestID)
+	}
 
 	response, err := s.analysisClient.SubmitAnalysis(ctx, AnalysisRequest{
 		JobID:      job.ID,
@@ -850,7 +881,18 @@ func (s *JobService) processAnalysisPoll(ctx context.Context, job models.Job) er
 		return s.failAnalysisJob(ctx, job, constants.StageAnalysisPoll, "analysis failed")
 	case "completed", "succeeded":
 		normalizedScenes := normalizeScenes(job.ID, response.Scenes)
-		slots, rankingRequestID, rankErr := s.rankSlotsWithOpenAI(ctx, job.ID, metadataFloat(job.Metadata, "source_fps"), product, normalizedScenes, stringSliceMetadata(job.Metadata, "rejected_slot_ids"))
+		videoHash, productHash, fingerprintErr := s.cacheFingerprints(campaign, product)
+		if fingerprintErr != nil {
+			return s.failAnalysisJob(ctx, job, constants.StageAnalysisPoll, summarizeProviderFailure("cache fingerprint failed", fingerprintErr))
+		}
+		if err := s.cache.SaveAnalysis(videoHash, cachedAnalysisResult{
+			Scenes:     cloneScenesForCache(normalizedScenes),
+			Metadata:   cloneMetadata(response.Metadata),
+			PayloadRef: response.PayloadRef,
+		}); err != nil {
+			return s.failAnalysisJob(ctx, job, constants.StageAnalysisPoll, summarizeProviderFailure("analysis cache save failed", err))
+		}
+		slots, rankingRequestID, rankErr := s.rankSlotsWithOpenAI(ctx, job.ID, metadataFloat(job.Metadata, "source_fps"), videoHash, productHash, product, normalizedScenes, stringSliceMetadata(job.Metadata, "rejected_slot_ids"))
 		if rankErr != nil {
 			return s.failAnalysisJob(ctx, job, constants.StageAnalysisPoll, summarizeProviderFailure("slot ranking failed", rankErr))
 		}
@@ -1181,6 +1223,7 @@ func sanitizeJob(job models.Job) models.Job {
 	delete(job.Metadata, internalProductLineRequestIDKey)
 	delete(job.Metadata, internalGenerationBriefRequestIDKey)
 	delete(job.Metadata, internalGenerationRequestIDKey)
+	delete(job.Metadata, internalGenerationRequestSnapshotKey)
 	delete(job.Metadata, internalGenerationPayloadRef)
 	delete(job.Metadata, internalRenderRequestIDKey)
 	delete(job.Metadata, internalRenderPayloadRef)
@@ -1222,6 +1265,19 @@ func cloneMetadata(metadata models.Metadata) models.Metadata {
 	cloned := make(models.Metadata, len(metadata))
 	for key, value := range metadata {
 		cloned[key] = value
+	}
+	return cloned
+}
+
+func cloneScenesForCache(scenes []models.Scene) []models.Scene {
+	cloned := make([]models.Scene, 0, len(scenes))
+	for _, scene := range scenes {
+		copyScene := scene
+		copyScene.ID = ""
+		copyScene.JobID = ""
+		copyScene.CreatedAt = ""
+		copyScene.Metadata = cloneMetadata(scene.Metadata)
+		cloned = append(cloned, copyScene)
 	}
 	return cloned
 }
@@ -1432,6 +1488,21 @@ func normalizeContentLanguage(language string) string {
 	default:
 		return "en"
 	}
+}
+
+func (s *JobService) cacheFingerprints(campaign models.Campaign, product models.Product) (string, string, error) {
+	if !s.cache.Enabled() {
+		return "", "", nil
+	}
+	videoHash, err := s.cache.HashFile(campaign.VideoPath)
+	if err != nil {
+		return "", "", err
+	}
+	productHash, err := s.cache.ProductFingerprint(product)
+	if err != nil {
+		return "", "", err
+	}
+	return videoHash, productHash, nil
 }
 
 func clamp01(value float64) float64 {

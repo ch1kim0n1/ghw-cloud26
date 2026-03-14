@@ -4,6 +4,12 @@
 
 Capture the current real Phase 4 state in the repository, identify what is already implemented, and define what still needs work before Phase 4 can be treated as complete and demo-ready.
 
+Current provider shape:
+
+- analysis: Azure Video Indexer + Azure OpenAI
+- generation: Higgsfield Kling primary, Azure ML fallback
+- render: Azure Blob Storage + Azure render service
+
 ## 2. Current Implemented Phase 4 Scope
 
 The repository already includes the main Phase 4 control flow:
@@ -57,17 +63,22 @@ Still needed:
 
 - one verified end-to-end run against the real configured provider profile
 - confirmation that uploaded source video, generated clip, and optional generated audio match the real render service contract
+- one live confirmation that Higgsfield output downloads cleanly into the local artifact flow
+- one live confirmation that Azure ML fallback still works when the primary generation path fails
 - confirmation that the preview blob returned by the render provider is playable without manual cleanup
 
 ### 4.2 Audio Path Clarity
 
 The current render request always asks for `crossfade`, and optional generated audio is passed through when present.
 
+The current generation path is video-first: Higgsfield may return only a clip, while Azure ML fallback may return clip plus audio.
+
 Still needed:
 
 - explicitly define whether Azure AI Speech is directly part of the current shipped runtime path or only a planned provider-side responsibility
 - confirm spoken-line renders for `auto` and `operator` modes
 - confirm silent renders for `disabled` mode
+- confirm preview quality remains acceptable when generation returns no standalone audio track
 
 ### 4.3 Media Quality Validation
 
@@ -100,6 +111,13 @@ Still needed:
 - one documented demo runbook for the full source video to preview workflow
 - a known-good demo asset and product pairing validated through the real preview path
 
+Current staged validation assets already exist in the repo:
+
+- `phase4-validation/input/video/phase4_test_60s.mp4`
+- `phase4-validation/input/video/phase4_test.mp4`
+- `phase4-validation/input/product/product.jpg`
+- `phase4-validation/input/product/metadata.json`
+
 ## 5. Recommended Completion Plan
 
 ### Step 1
@@ -113,6 +131,12 @@ Run the full automated backend and frontend test suites in a working local toolc
 ### Step 3
 
 Execute one baseline end-to-end Phase 4 run with real provider configuration.
+
+Use the staged 60-second baseline clip first:
+
+- `phase4-validation/input/video/phase4_test_60s.mp4`
+- `phase4-validation/input/product/product.jpg`
+- `phase4-validation/input/product/metadata.json`
 
 ### Step 4
 
@@ -136,6 +160,7 @@ Write a short demo runbook with the exact environment variables, startup steps, 
 Phase 4 should be treated as complete when all of the following are true:
 
 - preview render works with real provider configuration
+- Higgsfield primary generation works or Azure ML fallback is proven live
 - preview playback and download work from the dashboard
 - output media quality has been checked against anchor and audio continuity expectations
 - render failure and retry have both been verified

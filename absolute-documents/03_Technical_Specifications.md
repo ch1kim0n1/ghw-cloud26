@@ -33,7 +33,7 @@ The MVP uses `CAFAI_PROVIDER_PROFILE` with `azure` as the default and `vultr` as
 The MVP names the following cloud services:
 
 - analysis: Azure Video Indexer + Azure OpenAI, or a Vultr-hosted analysis service
-- CAFAI clip generation: Azure Machine Learning + Azure OpenAI, or a Vultr-hosted generation service
+- CAFAI clip generation: Higgsfield Kling + Azure OpenAI as primary, Azure Machine Learning as fallback, or a Vultr-hosted generation service when the Vultr profile is selected
 - audio generation and alignment: Azure AI Speech
 - final render: Azure Container Apps running ffmpeg, or a Vultr-hosted render service
 - temporary artifact storage: Azure Blob Storage or Vultr Object Storage
@@ -141,7 +141,7 @@ Frame math must always use the source video FPS. Never hardcode 24 FPS.
 Operational rule:
 
 - if `ffprobe` or `ffmpeg` is not installed locally, the backend startup path should surface a clear dependency error with platform-appropriate install guidance
-- if Azure Video Indexer, Azure OpenAI, or Azure Machine Learning configuration is incomplete, the backend startup path should fail fast instead of silently enabling placeholder runtime behavior
+- if Azure Video Indexer, Azure OpenAI, Azure Machine Learning fallback, or required Higgsfield configuration is incomplete for the selected runtime path, the backend startup path should fail fast instead of silently enabling placeholder runtime behavior
 
 ## 8. Cloud Analysis Stage
 
@@ -275,6 +275,7 @@ The operator may:
 - accept the generated line
 - edit the line
 - disable dialogue entirely
+- review detected content language before generation starts
 
 ## 11. CAFAI Generation Stage
 
@@ -322,13 +323,22 @@ The generated clip should:
 ### 11.5 Output
 
 - generated clip path or downloaded local copy
-- generated audio track or muxed clip with audio
+- optional generated audio track or muxed clip with audio
 - generation duration
 - quality metadata if available
 
 ### 11.6 Failure Policy
 
-There is no fallback generation path in MVP.
+The default Azure-backed runtime now uses a fallback generation path.
+
+Primary generation path:
+
+- Higgsfield Kling for the bridge clip
+- Azure OpenAI for ranking, suggested product line, and generation brief
+
+Fallback generation path:
+
+- Azure Machine Learning when Higgsfield submission, polling, or output handling fails
 
 If CAFAI generation fails:
 
@@ -336,6 +346,12 @@ If CAFAI generation fails:
 - job status becomes `failed`
 - `current_stage` remains in generation-related state
 - the dashboard exposes the failure reason
+
+If Higgsfield fails but Azure ML fallback succeeds:
+
+- the job remains in the normal generation flow
+- generation metadata records the provider attempted, provider used, and fallback reason
+- the public API keeps the same outer job and slot shapes
 
 ### 11.7 RIFE and Smoothing
 
