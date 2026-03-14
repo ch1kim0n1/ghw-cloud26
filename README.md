@@ -39,20 +39,35 @@ This repo now supports that manual recovery path explicitly, so a generated clip
 
 The repo includes a concrete validation package under [phase4-validation](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation).
 
-Source assets:
+Product used in the demo:
+
+![Product Image](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/input/product/product.jpg)
+
+Source clip preview:
+
+![Source Preview](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/output/readme-assets/source-preview.gif)
+
+Generated bridge clip preview:
+
+![Generated Preview](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/output/readme-assets/generated-preview.gif)
+
+Manual anchor frames used for import matching:
+
+![Start Frame](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/output/start-stop-frames/start-frame.png)
+![Stop Frame](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/output/start-stop-frames/stop-frame.png)
+
+Final stitched preview:
+
+![Final Preview](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/output/readme-assets/final-preview.gif)
+
+Downloadable source and result files:
 - full source video: [phase4_test.mp4](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/input/video/phase4_test.mp4)
 - short baseline clip used for repeated runs: [phase4_test_59s.mp4](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/input/video/phase4_test_59s.mp4)
 - overflow variant kept for reference: [phase4_test_60s.mp4](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/input/video/phase4_test_60s.mp4)
-- product image: [product.jpg](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/input/product/product.jpg)
 - product metadata: [metadata.json](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/input/product/metadata.json)
-
-Generated demo assets:
-- manually generated bridge clip: [hf_20260314_191119_ba726ac9-6ed2-4ac1-b9e1-696055d5e81f.mp4](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/output/video/hf_20260314_191119_ba726ac9-6ed2-4ac1-b9e1-696055d5e81f.mp4)
-- manual start frame used for import matching: [start-frame.png](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/output/start-stop-frames/start-frame.png)
-- manual stop frame used for import matching: [stop-frame.png](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/output/start-stop-frames/stop-frame.png)
-
-Final stitched result:
-- local stitched preview from the short source clip: [manual_import_preview_local.mp4](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/output/manual_import_preview_local.mp4)
+- manually generated bridge clip MP4: [hf_20260314_191119_ba726ac9-6ed2-4ac1-b9e1-696055d5e81f.mp4](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/output/video/hf_20260314_191119_ba726ac9-6ed2-4ac1-b9e1-696055d5e81f.mp4)
+- app-produced final preview MP4: [manual_import_preview_api.mp4](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/output/manual_import_preview_api.mp4)
+- earlier local stitched preview MP4: [manual_import_preview_local.mp4](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/output/manual_import_preview_local.mp4)
 
 ## Demo Result
 
@@ -62,13 +77,17 @@ For the current hackathon run:
 - product used: Pepsi Cola from [metadata.json](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/input/product/metadata.json)
 - generated bridge clip used for insertion: [hf_20260314_191119_ba726ac9-6ed2-4ac1-b9e1-696055d5e81f.mp4](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/output/video/hf_20260314_191119_ba726ac9-6ed2-4ac1-b9e1-696055d5e81f.mp4)
 - matched insertion anchors: approximately `7.068s` to `7.134s` in the source clip
-- final preview output: [manual_import_preview_local.mp4](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/output/manual_import_preview_local.mp4)
+- final preview output from the app: [manual_import_preview_api.mp4](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/output/manual_import_preview_api.mp4)
 - final preview duration: about `64.50s`
 
-Why the final stitch is local:
+Preview summary:
+
+![Final Preview Result](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/output/readme-assets/final-preview.gif)
+
+Why the final app preview now succeeds:
 - the manual generation import path worked
 - the live cloud render submission still failed at provider level
-- so the repo completed the final merge locally to preserve a usable hackathon deliverable
+- the backend now falls back to local `ffmpeg` stitching automatically and still marks the preview as completed
 
 ## Current Status
 
