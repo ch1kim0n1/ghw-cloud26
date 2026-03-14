@@ -33,7 +33,7 @@ func NewAzureVideoIndexerClient(cfg config.Config, logger *slog.Logger, httpClie
 	return &AzureVideoIndexerClient{
 		baseURL:     strings.TrimRight(cfg.AzureVideoIndexerURL, "/"),
 		accountID:   cfg.AzureVideoIndexerAccountID,
-		location:    cfg.AzureVideoIndexerLocation,
+		location:    normalizeAzureLocation(cfg.AzureVideoIndexerLocation),
 		accessToken: cfg.AzureVideoIndexerAccessToken,
 		logger:      logger,
 		httpClient:  httpClient,
@@ -159,6 +159,14 @@ func (c *AzureVideoIndexerClient) videoEndpoint(path string) (*url.URL, error) {
 		return nil, fmt.Errorf("Azure Video Indexer client is not configured")
 	}
 	return url.Parse(fmt.Sprintf("%s/%s/Accounts/%s%s", c.baseURL, url.PathEscape(c.location), url.PathEscape(c.accountID), path))
+}
+
+func normalizeAzureLocation(value string) string {
+	trimmed := strings.TrimSpace(strings.ToLower(value))
+	if trimmed == "" {
+		return ""
+	}
+	return strings.ReplaceAll(trimmed, " ", "")
 }
 
 func decodeJSONResponse(response *http.Response, target any) error {

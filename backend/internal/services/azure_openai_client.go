@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"path"
 	"strings"
 
 	"github.com/ch1kim0n1/ghw-cloud26/backend/internal/config"
@@ -37,11 +38,12 @@ type AzureOpenAIClient struct {
 }
 
 func NewAzureOpenAIClient(cfg config.Config, logger *slog.Logger, httpClient *http.Client) *AzureOpenAIClient {
+	baseURL, deployment, apiVersion := normalizeAzureOpenAIEndpoint(cfg.AzureOpenAIURL, cfg.AzureOpenAIDeployment, cfg.AzureOpenAIApiVersion)
 	return &AzureOpenAIClient{
-		baseURL:    strings.TrimRight(cfg.AzureOpenAIURL, "/"),
+		baseURL:    baseURL,
 		apiKey:     cfg.AzureOpenAIApiKey,
-		apiVersion: cfg.AzureOpenAIApiVersion,
-		deployment: cfg.AzureOpenAIDeployment,
+		apiVersion: apiVersion,
+		deployment: deployment,
 		logger:     logger,
 		httpClient: httpClient,
 	}
@@ -65,7 +67,7 @@ func (c *AzureOpenAIClient) Complete(ctx context.Context, req OpenAIRequest) (Op
 		return OpenAIResponse{}, fmt.Errorf("marshal Azure OpenAI request: %w", err)
 	}
 
-	endpoint := fmt.Sprintf("%s/openai/deployments/%s/chat/completions?api-version=%s", c.baseURL, url.PathEscape(c.deployment), url.QueryEscape(c.apiVersion))
+	endpoint := buildAzureOpenAIEndpoint(c.baseURL, c.deployment, c.apiVersion)
 	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return OpenAIResponse{}, fmt.Errorf("create Azure OpenAI request: %w", err)
@@ -108,6 +110,51 @@ func (c *AzureOpenAIClient) Complete(ctx context.Context, req OpenAIRequest) (Op
 	}
 	c.logger.Info("received Azure OpenAI completion", "job_id", req.JobID, "purpose", req.Purpose, "request_id", payloadResponse.ID)
 	return OpenAIResponse{RequestID: payloadResponse.ID, Content: content}, nil
+}
+
+func normalizeAzureOpenAIEndpoint(rawBaseURL, deployment, apiVersion string) (string, string, string) {
+	trimmed := strings.TrimRight(strings.TrimSpace(rawBaseURL), "/")
+	if trimmed == "" {
+		return "", deployment, apiVersion
+	}
+
+	parsed, err := url.Parse(trimmed)
+	if err != nil {
+		return trimmed, deployment, apiVersion
+	}
+
+	if strings.Contains(parsed.Path, "/openai/deployments/") {
+		parts := strings.Split(parsed.Path, "/")
+		for index := 0; index < len(parts)-2; index++ {
+			if parts[index] == "deployments" && deployment == "" {
+				deployment = parts[index+1]
+			}
+		}
+		if queryVersion := strings.TrimSpace(parsed.Query().Get("api-version")); queryVersion != "" {
+			apiVersion = queryVersion
+		}
+		parsed.RawQuery = ""
+		parsed.Path = ""
+		return strings.TrimRight(parsed.String(), "/"), deployment, apiVersion
+	}
+
+	return trimmed, deployment, apiVersion
+}
+
+func buildAzureOpenAIEndpoint(baseURL, deployment, apiVersion string) string {
+	trimmedBase := strings.TrimRight(baseURL, "/")
+	if trimmedBase == "" {
+		return ""
+	}
+	parsed, err := url.Parse(trimmedBase)
+	if err != nil {
+		return fmt.Sprintf("%s/openai/deployments/%s/chat/completions?api-version=%s", trimmedBase, url.PathEscape(deployment), url.QueryEscape(apiVersion))
+	}
+	parsed.Path = path.Join(parsed.Path, "openai", "deployments", deployment, "chat", "completions")
+	query := parsed.Query()
+	query.Set("api-version", apiVersion)
+	parsed.RawQuery = query.Encode()
+	return parsed.String()
 }
 
 func messageContent(value any) (string, error) {

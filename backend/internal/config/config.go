@@ -79,7 +79,7 @@ func Load() (Config, error) {
 		AzureVideoIndexerLocation:    os.Getenv("AZURE_VIDEO_INDEXER_LOCATION"),
 		AzureVideoIndexerAccessToken: os.Getenv("AZURE_VIDEO_INDEXER_ACCESS_TOKEN"),
 		AzureOpenAIURL:               os.Getenv("AZURE_OPENAI_URL"),
-		AzureOpenAIApiKey:            os.Getenv("AZURE_OPENAI_API_KEY"),
+		AzureOpenAIApiKey:            firstNonEmpty(os.Getenv("AZURE_OPENAI_API_KEY"), os.Getenv("AZURE_OPENAI_API_KEY1"), os.Getenv("AZURE_OPENAI_API_KEY2")),
 		AzureOpenAIApiVersion:        getEnv("AZURE_OPENAI_API_VERSION", "2024-10-21"),
 		AzureOpenAIDeployment:        os.Getenv("AZURE_OPENAI_DEPLOYMENT"),
 		AzureMLURL:                   os.Getenv("AZURE_ML_URL"),
@@ -177,4 +177,13 @@ func normalizeProviderProfile(value string) string {
 		return "azure"
 	}
 	return trimmed
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }

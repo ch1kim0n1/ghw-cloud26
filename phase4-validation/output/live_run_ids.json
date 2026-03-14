@@ -1,0 +1,45 @@
+{
+  "product": {
+    "id": "prod_fd88aeda-2f03-4091-948b-1f457448e8a1",
+    "name": "Pepsi Cola",
+    "description": "Iconic cola beverage with a bold, refreshing taste. Perfect for social gatherings, celebrations, and moments of pure refreshment. Available in classic, diet, and zero sugar variants.",
+    "category": "beverage",
+    "context_keywords": [
+      "cola",
+      "soft drink",
+      "refreshment",
+      "social gathering",
+      "celebration",
+      "party",
+      "iconic brand",
+      "taste of a generation",
+      "fizzy drink",
+      "beverage"
+    ],
+    "source_url": "https://www.pepsi.com",
+    "image_path": "/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/tmp/uploads/products/prod_fd88aeda-2f03-4091-948b-1f457448e8a1.jpg",
+    "created_at": "2026-03-14T07:48:05.626761Z",
+    "updated_at": "2026-03-14T07:48:05.626761Z"
+  },
+  "campaign": {
+    "campaign_id": "camp_8411ad02-3da0-4cd5-9e3d-ed2984aba251",
+    "job_id": "job_00680394-d6e9-40ee-802e-a2241ffa5f08",
+    "product_id": "prod_fd88aeda-2f03-4091-948b-1f457448e8a1",
+    "name": "phase4 validation run 2",
+    "status": "queued",
+    "current_stage": "ready_for_analysis",
+    "video_filename": "phase4_test.mp4",
+    "video_path": "/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/tmp/uploads/campaigns/camp_8411ad02-3da0-4cd5-9e3d-ed2984aba251.mp4",
+    "source_fps": 29.97002997002997,
+    "duration_seconds": 977.69941,
+    "target_ad_duration_seconds": 6,
+    "created_at": "2026-03-14T07:48:06.044485Z",
+    "updated_at": "2026-03-14T07:48:06.044485Z"
+  },
+  "analysis": {
+    "current_stage": "analysis_submission",
+    "job_id": "job_00680394-d6e9-40ee-802e-a2241ffa5f08",
+    "message": "analysis started",
+    "status": "analyzing"
+  }
+}

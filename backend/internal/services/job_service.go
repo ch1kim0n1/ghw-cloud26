@@ -797,7 +797,7 @@ func (s *JobService) processAnalysisSubmission(ctx context.Context, job models.J
 		CampaignID: campaign.ID,
 	})
 	if err != nil {
-		return s.failAnalysisJob(ctx, job, constants.StageAnalysisSubmission, "analysis submission failed")
+		return s.failAnalysisJob(ctx, job, constants.StageAnalysisSubmission, summarizeProviderFailure("analysis submission failed", err))
 	}
 
 	tx, beginErr := s.database.BeginTx(ctx, nil)
@@ -859,7 +859,7 @@ func (s *JobService) processAnalysisPoll(ctx context.Context, job models.Job) er
 		SourceFPS:  metadataFloat(job.Metadata, "source_fps"),
 	})
 	if err != nil {
-		return s.failAnalysisJob(ctx, job, constants.StageAnalysisPoll, "analysis polling failed")
+		return s.failAnalysisJob(ctx, job, constants.StageAnalysisPoll, summarizeProviderFailure("analysis polling failed", err))
 	}
 
 	switch strings.ToLower(response.Status) {
@@ -871,7 +871,7 @@ func (s *JobService) processAnalysisPoll(ctx context.Context, job models.Job) er
 		normalizedScenes := normalizeScenes(job.ID, response.Scenes)
 		slots, rankingRequestID, rankErr := s.rankSlotsWithOpenAI(ctx, job.ID, metadataFloat(job.Metadata, "source_fps"), product, normalizedScenes, stringSliceMetadata(job.Metadata, "rejected_slot_ids"))
 		if rankErr != nil {
-			return s.failAnalysisJob(ctx, job, constants.StageAnalysisPoll, "slot ranking failed")
+			return s.failAnalysisJob(ctx, job, constants.StageAnalysisPoll, summarizeProviderFailure("slot ranking failed", rankErr))
 		}
 		return s.persistCompletedAnalysis(ctx, job, normalizedScenes, slots, response, rankingRequestID)
 	default:
@@ -997,6 +997,17 @@ func (s *JobService) failAnalysisJob(ctx context.Context, job models.Job, stage,
 	}
 
 	return tx.Commit()
+}
+
+func summarizeProviderFailure(prefix string, err error) string {
+	if err == nil {
+		return prefix
+	}
+	detail := strings.TrimSpace(err.Error())
+	if detail == "" {
+		return prefix
+	}
+	return fmt.Sprintf("%s: %s", prefix, detail)
 }
 
 func normalizeScenes(jobID string, scenes []models.Scene) []models.Scene {
