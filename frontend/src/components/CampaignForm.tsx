@@ -124,7 +124,6 @@ export function CampaignForm() {
               type="file"
               accept=".mp4,video/mp4"
               onChange={(event) => setVideoFile(event.target.files?.[0] ?? null)}
-              required
             />
           </label>
 
