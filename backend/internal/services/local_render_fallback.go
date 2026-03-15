@@ -30,16 +30,19 @@ func (s *JobService) tryLocalRenderFallback(ctx context.Context, job models.Job,
 		return false, nil
 	}
 
-	outputPath := filepath.Join(s.previewDir, previewOutputFilename(job.ID))
-	renderMetrics, stitchErr := stitchPreviewLocally(ctx, campaign.VideoPath, stringValueOrDefault(slot.GeneratedClipPath), stringValueOrDefault(slot.GeneratedAudioPath), outputPath, slot.AnchorStartFrame, slot.AnchorEndFrame, metadataFloat(job.Metadata, "source_fps"))
-	if stitchErr != nil {
-		return true, s.failRenderJob(ctx, job, preview, slot.ID, summarizeProviderFailure(reason, stitchErr))
-	}
-
 	artifactManifest = cloneMetadata(artifactManifest)
 	if artifactManifest == nil {
 		artifactManifest = models.Metadata{}
 	}
+
+	outputPath := filepath.Join(s.previewDir, previewOutputFilename(job.ID))
+	renderMetrics, stitchErr := stitchPreviewLocally(ctx, campaign.VideoPath, stringValueOrDefault(slot.GeneratedClipPath), stringValueOrDefault(slot.GeneratedAudioPath), outputPath, slot.AnchorStartFrame, slot.AnchorEndFrame, metadataFloat(job.Metadata, "source_fps"))
+	if stitchErr != nil {
+		failedPreview := preview
+		failedPreview.ArtifactManifest = artifactManifest
+		return true, s.failRenderJob(ctx, job, failedPreview, slot.ID, summarizeProviderFailure(reason, stitchErr))
+	}
+
 	artifactManifest["local_render_fallback"] = true
 	artifactManifest["local_preview_output_path"] = outputPath
 

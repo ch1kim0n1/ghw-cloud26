@@ -1,21 +1,29 @@
-# Phase 4 Validation Inputs
+# Phase 4 Validation Notes
 
-Place the validation assets here before the real Phase 4 run.
+This folder stores execution notes and evidence for Phase 4 completion.
 
-Required:
+Primary docs:
 
-- `input/video/phase4_test.mp4`
-- `input/product/product.png` or `input/product/product.jpg`
-- `input/product/metadata.json`
-- repo-root `.env.phase4.local`
+- Canonical runbook: `PHASE4_DEMO_RUNBOOK.md`
+- Evidence checklist: `phase4-validation/notes/EVIDENCE_TEMPLATE.md`
 
-Optional:
+## Baseline Assets
 
-- backup video in `input/video/`
-- backup product image or alternate metadata
+Use Example1 for the mandatory real-provider baseline run:
 
-Run priority for this validation:
+- `phase4-validation/input/Example1/video/phase4_test_60s.mp4`
+- `phase4-validation/input/Example1/product/product.jpg`
+- `phase4-validation/input/Example1/product/metadata.json`
 
-- prove preview render and download first
-- verify sound generation path
-- review visual and audio quality second
+## Evidence Storage Convention
+
+Store run artifacts in a timestamped folder:
+
+- `phase4-validation/notes/evidence-<YYYYMMDD-HHMM>/job.json`
+- `phase4-validation/notes/evidence-<YYYYMMDD-HHMM>/preview.json`
+- `phase4-validation/notes/evidence-<YYYYMMDD-HHMM>/logs.json`
+- `phase4-validation/notes/evidence-<YYYYMMDD-HHMM>/ffprobe-preview.json`
+
+Keep large media outputs in:
+
+- `phase4-validation/output/Example1/`

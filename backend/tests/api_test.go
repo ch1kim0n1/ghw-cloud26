@@ -1691,6 +1691,135 @@ func TestPreviewRenderFallsBackToLocalFFmpegWhenCloudRenderFails(t *testing.T) {
 	}
 }
 
+func TestPreviewRenderFailurePreservesArtifactsForRetry(t *testing.T) {
+	analysisClient := &fakeAnalysisClient{
+		submitRequestID: "req_phase4_retry",
+		pollResponses: []services.AnalysisPollResponse{
+			{RequestID: "req_phase4_retry", Status: "completed", Scenes: validAnalysisScenes()},
+		},
+	}
+	openAIClient := &fakeOpenAIClient{
+		responses: []string{
+			slotRankingContentForSuffix("phase4_retry"),
+			`{"suggested_product_line":"I grabbed this sparkling water earlier."}`,
+			`{"generation_brief":"Bridge from the start anchor, introduce the sparkling water naturally, and resolve into the end anchor."}`,
+		},
+	}
+	mlClient := &fakeMLClient{
+		submitResponse: services.GenerationResponse{RequestID: "gen_req_retry", Status: "submitted"},
+		pollResponses: []services.GenerationResponse{
+			{
+				RequestID:          "gen_req_retry",
+				Status:             "completed",
+				GeneratedClipPath:  "tmp/artifacts/job_fixture_phase4_retry/slot_1.mp4",
+				GeneratedAudioPath: "tmp/artifacts/job_fixture_phase4_retry/slot_1.wav",
+				Metadata:           models.Metadata{"duration_seconds": 6.0},
+			},
+		},
+	}
+	blobClient := &fakeBlobStorageClient{}
+	renderClient := &fakeRenderClient{
+		submitResponse: services.RenderResponse{RequestID: "render_req_retry", Status: "failed", Message: "provider render mismatch"},
+	}
+	env := newAPIEnvWithPreviewClients(t, analysisClient, openAIClient, mlClient, &fakeAnchorFrameExtractor{}, blobClient, renderClient)
+
+	product := insertProductFixture(t, env.database, "phase4 retry water")
+	_, job := insertCampaignJobFixture(t, env.database, product.ID, "phase4_retry")
+
+	env.serve(http.MethodPost, "/api/jobs/"+job.ID+"/start-analysis", nil, "")
+	if err := env.jobService.ProcessPendingAnalysis(context.Background()); err != nil {
+		t.Fatalf("ProcessPendingAnalysis() analysis error = %v", err)
+	}
+
+	slotsRec := env.serve(http.MethodGet, "/api/jobs/"+job.ID+"/slots", nil, "")
+	var slotsPayload struct {
+		Slots []models.Slot `json:"slots"`
+	}
+	decodeJSON(t, slotsRec.Body.Bytes(), &slotsPayload)
+	selectedSlot := slotsPayload.Slots[0]
+
+	selectRec := env.serve(http.MethodPost, "/api/jobs/"+job.ID+"/slots/"+selectedSlot.ID+"/select", nil, "")
+	if selectRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", selectRec.Code, selectRec.Body.String())
+	}
+	generateRec := env.serve(http.MethodPost, "/api/jobs/"+job.ID+"/slots/"+selectedSlot.ID+"/generate", []byte(`{"product_line_mode":"auto"}`), "application/json")
+	if generateRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", generateRec.Code, generateRec.Body.String())
+	}
+	if err := env.jobService.ProcessPendingAnalysis(context.Background()); err != nil {
+		t.Fatalf("ProcessPendingAnalysis() generation error = %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join("tmp", "artifacts", "job_fixture_phase4_retry"), 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	if err := os.WriteFile("tmp/artifacts/job_fixture_phase4_retry/slot_1.mp4", []byte("fake generated clip"), 0o644); err != nil {
+		t.Fatalf("WriteFile() clip error = %v", err)
+	}
+	if err := os.WriteFile("tmp/artifacts/job_fixture_phase4_retry/slot_1.wav", []byte("fake generated audio"), 0o644); err != nil {
+		t.Fatalf("WriteFile() audio error = %v", err)
+	}
+
+	renderRec := env.serve(http.MethodPost, "/api/jobs/"+job.ID+"/preview/render", []byte(`{"slot_id":"`+selectedSlot.ID+`"}`), "application/json")
+	if renderRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", renderRec.Code, renderRec.Body.String())
+	}
+	if err := env.jobService.ProcessPendingAnalysis(context.Background()); err != nil {
+		t.Fatalf("ProcessPendingAnalysis() render failure pass #1 error = %v", err)
+	}
+
+	firstPreviewRec := env.serve(http.MethodGet, "/api/jobs/"+job.ID+"/preview", nil, "")
+	if firstPreviewRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", firstPreviewRec.Code, firstPreviewRec.Body.String())
+	}
+	var firstPreview models.Preview
+	decodeJSON(t, firstPreviewRec.Body.Bytes(), &firstPreview)
+	if firstPreview.Status != "failed" {
+		t.Fatalf("expected failed preview after first render attempt, got %s", firstPreview.Status)
+	}
+	if firstPreview.RenderRetryCount != 1 {
+		t.Fatalf("expected retry count 1 after first failure, got %d", firstPreview.RenderRetryCount)
+	}
+	firstSourceURI := metadataStringValue(firstPreview.ArtifactManifest, "source_video_blob_uri")
+	firstClipURI := metadataStringValue(firstPreview.ArtifactManifest, "generation_blob_uri")
+	if firstSourceURI == "" || firstClipURI == "" {
+		t.Fatalf("expected artifact manifest URIs after failure, got %#v", firstPreview.ArtifactManifest)
+	}
+	uploadCallsAfterFirstFailure := blobClient.uploadCalls
+	if uploadCallsAfterFirstFailure < 2 {
+		t.Fatalf("expected uploads for source and generated clip, got %d", uploadCallsAfterFirstFailure)
+	}
+
+	retryRec := env.serve(http.MethodPost, "/api/jobs/"+job.ID+"/preview/render", []byte(`{"slot_id":"`+selectedSlot.ID+`"}`), "application/json")
+	if retryRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 on retry render start, got %d: %s", retryRec.Code, retryRec.Body.String())
+	}
+	if err := env.jobService.ProcessPendingAnalysis(context.Background()); err != nil {
+		t.Fatalf("ProcessPendingAnalysis() render failure pass #2 error = %v", err)
+	}
+
+	secondPreviewRec := env.serve(http.MethodGet, "/api/jobs/"+job.ID+"/preview", nil, "")
+	if secondPreviewRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", secondPreviewRec.Code, secondPreviewRec.Body.String())
+	}
+	var secondPreview models.Preview
+	decodeJSON(t, secondPreviewRec.Body.Bytes(), &secondPreview)
+	if secondPreview.Status != "failed" {
+		t.Fatalf("expected failed preview after retry failure, got %s", secondPreview.Status)
+	}
+	if secondPreview.RenderRetryCount != 2 {
+		t.Fatalf("expected retry count 2 after second failure, got %d", secondPreview.RenderRetryCount)
+	}
+	if got := metadataStringValue(secondPreview.ArtifactManifest, "source_video_blob_uri"); got != firstSourceURI {
+		t.Fatalf("expected source blob URI to be reused across retry, got %q want %q", got, firstSourceURI)
+	}
+	if got := metadataStringValue(secondPreview.ArtifactManifest, "generation_blob_uri"); got != firstClipURI {
+		t.Fatalf("expected generated clip blob URI to be reused across retry, got %q want %q", got, firstClipURI)
+	}
+	if blobClient.uploadCalls != uploadCallsAfterFirstFailure {
+		t.Fatalf("expected no additional uploads on retry, got %d want %d", blobClient.uploadCalls, uploadCallsAfterFirstFailure)
+	}
+}
+
 func TestManualGenerationImportWorksWithoutAnalyzedScenes(t *testing.T) {
 	requireMediaToolchain(t)
 
@@ -1979,6 +2108,21 @@ func decodeJSON(t *testing.T, payload []byte, target any) {
 	}
 }
 
+func metadataStringValue(metadata models.Metadata, key string) string {
+	if metadata == nil {
+		return ""
+	}
+	raw, ok := metadata[key]
+	if !ok {
+		return ""
+	}
+	value, ok := raw.(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(value)
+}
+
 func insertProductFixture(t *testing.T, database *sql.DB, name string) models.Product {
 	t.Helper()
 
@@ -2198,10 +2342,12 @@ type fakeAnchorFrameExtractor struct {
 }
 
 type fakeBlobStorageClient struct {
-	uploads map[string][]byte
+	uploads     map[string][]byte
+	uploadCalls int
 }
 
 func (c *fakeBlobStorageClient) Upload(_ context.Context, req services.BlobUploadRequest) (services.BlobUploadResponse, error) {
+	c.uploadCalls++
 	if c.uploads == nil {
 		c.uploads = map[string][]byte{}
 	}
