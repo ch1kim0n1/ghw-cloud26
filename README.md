@@ -22,6 +22,7 @@ The current implementation uses:
 - Azure ML as fallback generation wiring
 - Azure Blob Storage for temporary render artifacts
 - a local Go control plane, SQLite metadata store, and React dashboard
+- optional Notion MCP-backed real-time audit sync for jobs and stage events
 
 ## Screenshots
 
@@ -139,6 +140,7 @@ Practical current state:
 - manual generated MP4 import works and is now part of the backend API
 - final preview stitching can be completed locally
 - live cloud render still needs provider-side stabilization
+- optional Notion MCP integration logs job transitions and operator actions in real time
 
 Intentionally deferred:
 - Phase 5: demo hardening, broader validation, and production-grade reliability work
@@ -154,6 +156,7 @@ Intentionally deferred:
 - Higgsfield Kling as primary media generation
 - Azure ML retained as fallback media generation path
 - Azure Blob Storage + render service for cloud stitching
+- optional Notion audit sink for cross-phase timeline visibility and run reporting
 
 Canonical job flow:
 
@@ -260,10 +263,38 @@ npm run build
 - Azure ML remains the fallback generation provider
 - preview rendering still expects blob/render provider configuration
 - local SQLite, local uploads, and local output folders remain part of the MVP control plane
+- if Notion audit env vars are configured, startup validates Notion database connectivity and `/api/health` reports audit status
+
+## Notion MCP Audit Mode
+
+The repository now supports a challenge-ready Notion MCP audit mode:
+
+- every job transition in the worker can be mirrored to Notion
+- key operator actions (analysis start, slot selection/rejection, generation start, preview render start, manual import) are logged
+- writes are asynchronous with retry, so audit issues do not block the core media pipeline
+
+Minimum setup:
+
+1. configure Notion env vars (`NOTION_API_KEY`, `NOTION_JOBS_DATABASE_ID`, `NOTION_EVENTS_DATABASE_ID`)
+2. optionally set frontend `VITE_NOTION_DASHBOARD_URL` to show a direct dashboard link on the job page
+3. run the helper checklist:
+
+```bash
+./backend/scripts/notion_mcp_bootstrap.sh
+```
+
+Health output now includes audit status:
+
+```bash
+curl -s http://localhost:8080/api/health
+```
 
 ## Documentation
 
 Core engineering docs live in [absolute-documents/01_Product_Design_Document.md](absolute-documents/01_Product_Design_Document.md) through [absolute-documents/10_BEFORE_PHASE5_TODO.md](absolute-documents/10_BEFORE_PHASE5_TODO.md).
+
+Notion audit setup guide:
+- [backend/docs/NOTION_MCP_INTEGRATION.md](backend/docs/NOTION_MCP_INTEGRATION.md)
 
 Recommended reading order:
 1. [01_Product_Design_Document.md](absolute-documents/01_Product_Design_Document.md)

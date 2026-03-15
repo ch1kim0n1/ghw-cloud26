@@ -40,6 +40,12 @@ type Config struct {
 	AzureBlobSASToken            string
 	AzureRenderURL               string
 	AzureRenderAPIKey            string
+	NotionAPIBaseURL             string
+	NotionAPIKey                 string
+	NotionVersion                string
+	NotionJobsDatabaseID         string
+	NotionEventsDatabaseID       string
+	NotionRequestTimeout         time.Duration
 	HiggsfieldAPIKey             string
 	HiggsfieldAPISecret          string
 	HiggsfieldBaseURL            string
@@ -94,6 +100,12 @@ func Load() (Config, error) {
 		AzureBlobSASToken:            os.Getenv("AZURE_BLOB_SAS_TOKEN"),
 		AzureRenderURL:               os.Getenv("AZURE_RENDER_URL"),
 		AzureRenderAPIKey:            os.Getenv("AZURE_RENDER_API_KEY"),
+		NotionAPIBaseURL:             getEnv("NOTION_API_BASE_URL", "https://api.notion.com/v1"),
+		NotionAPIKey:                 os.Getenv("NOTION_API_KEY"),
+		NotionVersion:                getEnv("NOTION_API_VERSION", "2022-06-28"),
+		NotionJobsDatabaseID:         os.Getenv("NOTION_JOBS_DATABASE_ID"),
+		NotionEventsDatabaseID:       os.Getenv("NOTION_EVENTS_DATABASE_ID"),
+		NotionRequestTimeout:         getDurationEnv("NOTION_REQUEST_TIMEOUT", 5*time.Second),
 		HiggsfieldAPIKey:             os.Getenv("HIGGSFIELD_API_KEY"),
 		HiggsfieldAPISecret:          os.Getenv("HIGGSFIELD_API_SECRET"),
 		HiggsfieldBaseURL:            getEnv("HIGGSFIELD_BASE_URL", "https://platform.higgsfield.ai"),

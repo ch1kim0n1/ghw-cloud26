@@ -53,7 +53,7 @@ func newJobService(deps Dependencies) *services.JobService {
 		renderClient = services.NewNoopRenderClient(deps.Logger)
 	}
 
-	return services.NewJobService(
+	service := services.NewJobService(
 		deps.DB,
 		db.NewJobsRepository(deps.DB),
 		db.NewCampaignsRepository(deps.DB),
@@ -72,4 +72,6 @@ func newJobService(deps Dependencies) *services.JobService {
 		deps.Config.PreviewsDir,
 		deps.Config.CacheDir,
 	)
+	service.SetAuditLogger(deps.AuditLogger)
+	return service
 }

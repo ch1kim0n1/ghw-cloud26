@@ -183,6 +183,11 @@ func (s *JobService) ImportManualGeneration(ctx context.Context, jobID, slotID s
 	if err != nil {
 		return models.Job{}, models.Slot{}, err
 	}
+	s.emitJobAudit("manual_generation_imported", refreshedJob, "manual generated clip imported", models.Metadata{
+		"slot_id":               targetSlot.ID,
+		"source_clip_path":      clipPath,
+		"source_audio_provided": audioPath != "",
+	})
 	return refreshedJob, refreshedSlot, nil
 }
 

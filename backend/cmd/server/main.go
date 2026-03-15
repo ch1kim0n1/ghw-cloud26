@@ -66,6 +66,18 @@ func main() {
 		logger.Error("configure phase 4 provider clients", "error", err, "provider_profile", cfg.ProviderProfile)
 		os.Exit(1)
 	}
+	auditLogger := services.NewAsyncJobAuditLogger(services.NewNotionAuditLogger(cfg, logger), logger)
+	defer auditLogger.Close()
+	defer auditLogger.Wait()
+	auditHealthCtx, auditHealthCancel := context.WithTimeout(ctx, cfg.NotionRequestTimeout)
+	auditHealth := auditLogger.Health(auditHealthCtx)
+	auditHealthCancel()
+	if auditHealth.Enabled && auditHealth.Status != "healthy" {
+		logger.Error("notion audit connectivity check failed", "status", auditHealth.Status, "details", auditHealth.Details)
+		os.Exit(1)
+	}
+	logger.Info("audit sink status", "enabled", auditHealth.Enabled, "status", auditHealth.Status, "details", auditHealth.Details)
+
 	jobService := services.NewJobService(
 		sqliteDB,
 		db.NewJobsRepository(sqliteDB),
@@ -85,6 +97,7 @@ func main() {
 		cfg.PreviewsDir,
 		cfg.CacheDir,
 	)
+	jobService.SetAuditLogger(auditLogger)
 
 	processor := worker.NewProcessor(logger, cfg.WorkerInterval)
 	processor.SetOnTick(func(tickCtx context.Context) {
@@ -106,6 +119,7 @@ func main() {
 		BlobClient:           blobClient,
 		RenderClient:         renderClient,
 		CafaiGenerator:       services.NewNoopCafaiGenerator(logger),
+		AuditLogger:          auditLogger,
 	})
 
 	server := &http.Server{

@@ -53,6 +53,13 @@ func TestHealthEndpoint(t *testing.T) {
 	if payload["provider_profile"] != "azure" {
 		t.Fatalf("expected azure provider profile, got %#v", payload["provider_profile"])
 	}
+	auditRaw, ok := payload["audit"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected audit health object, got %#v", payload["audit"])
+	}
+	if auditRaw["status"] != "disabled" {
+		t.Fatalf("expected disabled audit status, got %#v", auditRaw["status"])
+	}
 }
 
 func TestPreviewRouteReturnsStandardNotFoundEnvelopeForMissingJob(t *testing.T) {

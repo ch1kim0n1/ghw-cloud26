@@ -3,6 +3,8 @@
 ## 1. Scope
 This document describes the actual MVP architecture only.
 
+The current MVP also supports an optional Notion MCP-backed audit sink for real-time job/event logging.
+
 ## 2. Canonical MVP Architecture
 The MVP uses a local control plane and local storage for operator access, while off-loading analysis, generation, audio work, and final rendering to cloud-backed compute. The current generation path is hybrid: Higgsfield is the primary Phase 3 media generator and Azure ML remains the fallback path.
 
@@ -17,6 +19,10 @@ The MVP uses a local control plane and local storage for operator access, while 
         v                    v
 [SQLite Metadata DB]   [Local Asset Filesystem]
         |                    |
+      |                    +-----------------------------+
+      |                                                  |
+      +------------------------>[Notion Audit Sink]      |
+      |                        (optional via MCP/API)    |
         |                    +-----------------------------+
         v                                                  |
 [Polling Job Worker]                                       |
@@ -43,6 +49,7 @@ The MVP uses a local control plane and local storage for operator access, while 
 - keep job states coarse and understandable
 - keep the output model simple: one downloadable preview per job
 - preserve generated artifacts when render fails
+- mirror job lifecycle events to Notion when audit mode is enabled
 - do not mix future production-only systems into the MVP design
 
 ## 4. Core Components

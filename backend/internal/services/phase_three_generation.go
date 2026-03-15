@@ -162,6 +162,10 @@ func (s *JobService) SelectSlot(ctx context.Context, jobID, slotID string) (mode
 	if err != nil {
 		return models.Job{}, models.Slot{}, err
 	}
+	s.emitJobAudit("slot_selected", job, "slot selected and product line prepared", models.Metadata{
+		"slot_id": slotID,
+		"manual":  false,
+	})
 	return sanitizeJob(job), refreshedSlot, nil
 }
 
@@ -372,6 +376,12 @@ func (s *JobService) SelectManualSlot(ctx context.Context, jobID string, startSe
 	if err != nil {
 		return models.Job{}, models.Slot{}, err
 	}
+	s.emitJobAudit("slot_selected", job, "manual slot selected and product line prepared", models.Metadata{
+		"slot_id":       slotID,
+		"manual":        true,
+		"start_seconds": roundScore(startSeconds),
+		"end_seconds":   roundScore(endSeconds),
+	})
 	return sanitizeJob(job), refreshedSlot, nil
 }
 
@@ -486,6 +496,11 @@ func (s *JobService) StartGeneration(ctx context.Context, jobID, slotID, product
 	if err != nil {
 		return models.Job{}, models.Slot{}, err
 	}
+	s.emitJobAudit("generation_started", job, "cafai generation started", models.Metadata{
+		"slot_id":            slotID,
+		"product_line_mode":  normalizedMode,
+		"custom_product_line": strings.TrimSpace(customProductLine),
+	})
 	return sanitizeJob(job), refreshedSlot, nil
 }
 

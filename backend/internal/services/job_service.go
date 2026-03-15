@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/ch1kim0n1/ghw-cloud26/backend/internal/constants"
 	"github.com/ch1kim0n1/ghw-cloud26/backend/internal/db"
@@ -45,6 +46,7 @@ type JobService struct {
 	renderClient       RenderClient
 	previewDir         string
 	cache              *ProviderCache
+	auditLogger        JobAuditLogger
 }
 
 func NewJobService(
@@ -84,7 +86,17 @@ func NewJobService(
 		renderClient:       renderClient,
 		previewDir:         previewDir,
 		cache:              NewProviderCache(cacheDir),
+		auditLogger:        NewNoopJobAuditLogger(),
 	}
+}
+
+func (s *JobService) SetAuditLogger(auditLogger JobAuditLogger) *JobService {
+	if auditLogger == nil {
+		s.auditLogger = NewNoopJobAuditLogger()
+		return s
+	}
+	s.auditLogger = auditLogger
+	return s
 }
 
 func (s *JobService) Get(ctx context.Context, jobID string) (models.Job, error) {
@@ -298,6 +310,9 @@ func (s *JobService) StartPreviewRender(ctx context.Context, jobID, slotID strin
 	if err != nil {
 		return models.Job{}, models.Preview{}, err
 	}
+	s.emitJobAudit("preview_render_started", job, "preview render started", models.Metadata{
+		"slot_id": slotID,
+	})
 	return sanitizeJob(job), refreshedPreview, nil
 }
 
@@ -364,6 +379,7 @@ func (s *JobService) StartAnalysis(ctx context.Context, jobID string) (models.Jo
 			"job_id": jobID,
 		}, err)
 	}
+	s.emitJobAudit("analysis_started", job, "analysis started", nil)
 
 	return sanitizeJob(job), nil
 }
@@ -531,6 +547,10 @@ func (s *JobService) RejectSlot(ctx context.Context, jobID, slotID, note string)
 		}
 		refreshedSlot.Metadata["rejection_note"] = trimmedNote
 	}
+	s.emitAuditForJobID(ctx, jobID, "slot_rejected", "slot rejected", models.Metadata{
+		"slot_id": slotID,
+		"note":    trimmedNote,
+	})
 	return refreshedSlot, nil
 }
 
@@ -698,8 +718,45 @@ func (s *JobService) RequestRepick(ctx context.Context, jobID string) (models.Jo
 			"job_id": jobID,
 		}, err)
 	}
+	s.emitJobAudit("repick_requested", job, "re-pick requested", nil)
 
 	return sanitizeJob(job), nil
+}
+
+func (s *JobService) emitAuditForJobID(ctx context.Context, jobID, eventType, message string, metadata models.Metadata) {
+	job, err := s.jobsRepository.GetByID(ctx, jobID)
+	if err != nil {
+		return
+	}
+	s.emitJobAudit(eventType, job, message, metadata)
+}
+
+func (s *JobService) emitJobAudit(eventType string, job models.Job, message string, metadata models.Metadata) {
+	if s.auditLogger == nil {
+		return
+	}
+	meta := cloneMetadata(metadata)
+	if meta == nil {
+		meta = models.Metadata{}
+	}
+	if message == "" {
+		message = eventType
+	}
+	errorCode := ""
+	if job.ErrorCode != nil {
+		errorCode = strings.TrimSpace(*job.ErrorCode)
+	}
+	_ = s.auditLogger.Record(context.Background(), JobAuditEvent{
+		JobID:        job.ID,
+		CampaignID:   job.CampaignID,
+		Status:       job.Status,
+		CurrentStage: job.CurrentStage,
+		EventType:    eventType,
+		Message:      message,
+		ErrorCode:    errorCode,
+		Timestamp:    time.Now().UTC(),
+		Metadata:     meta,
+	})
 }
 
 func (s *JobService) ProcessPendingAnalysis(ctx context.Context) error {
@@ -708,7 +765,7 @@ func (s *JobService) ProcessPendingAnalysis(ctx context.Context) error {
 		return err
 	}
 	for _, job := range submissionJobs {
-		if err := s.processAnalysisSubmission(ctx, job); err != nil {
+		if err := s.processAndAuditTransition(ctx, "analysis_submission", job, s.processAnalysisSubmission); err != nil {
 			return err
 		}
 	}
@@ -718,7 +775,7 @@ func (s *JobService) ProcessPendingAnalysis(ctx context.Context) error {
 		return err
 	}
 	for _, job := range pollJobs {
-		if err := s.processAnalysisPoll(ctx, job); err != nil {
+		if err := s.processAndAuditTransition(ctx, "analysis_poll", job, s.processAnalysisPoll); err != nil {
 			return err
 		}
 	}
@@ -728,7 +785,7 @@ func (s *JobService) ProcessPendingAnalysis(ctx context.Context) error {
 		return err
 	}
 	for _, job := range generationSubmissionJobs {
-		if err := s.processGenerationSubmission(ctx, job); err != nil {
+		if err := s.processAndAuditTransition(ctx, "generation_submission", job, s.processGenerationSubmission); err != nil {
 			return err
 		}
 	}
@@ -738,7 +795,7 @@ func (s *JobService) ProcessPendingAnalysis(ctx context.Context) error {
 		return err
 	}
 	for _, job := range generationPollJobs {
-		if err := s.processGenerationPoll(ctx, job); err != nil {
+		if err := s.processAndAuditTransition(ctx, "generation_poll", job, s.processGenerationPoll); err != nil {
 			return err
 		}
 	}
@@ -748,7 +805,7 @@ func (s *JobService) ProcessPendingAnalysis(ctx context.Context) error {
 		return err
 	}
 	for _, job := range renderSubmissionJobs {
-		if err := s.processRenderSubmission(ctx, job); err != nil {
+		if err := s.processAndAuditTransition(ctx, "render_submission", job, s.processRenderSubmission); err != nil {
 			return err
 		}
 	}
@@ -758,11 +815,46 @@ func (s *JobService) ProcessPendingAnalysis(ctx context.Context) error {
 		return err
 	}
 	for _, job := range renderPollJobs {
-		if err := s.processRenderPoll(ctx, job); err != nil {
+		if err := s.processAndAuditTransition(ctx, "render_poll", job, s.processRenderPoll); err != nil {
 			return err
 		}
 	}
 
+	return nil
+}
+
+func (s *JobService) processAndAuditTransition(ctx context.Context, source string, before models.Job, transitionFn func(context.Context, models.Job) error) error {
+	if err := transitionFn(ctx, before); err != nil {
+		return err
+	}
+	after, err := s.jobsRepository.GetByID(ctx, before.ID)
+	if err != nil {
+		return nil
+	}
+
+	beforeErrorCode := ""
+	if before.ErrorCode != nil {
+		beforeErrorCode = strings.TrimSpace(*before.ErrorCode)
+	}
+	afterErrorCode := ""
+	if after.ErrorCode != nil {
+		afterErrorCode = strings.TrimSpace(*after.ErrorCode)
+	}
+	if before.Status == after.Status && before.CurrentStage == after.CurrentStage && beforeErrorCode == afterErrorCode {
+		return nil
+	}
+
+	s.emitJobAudit("job_transitioned", after, "job transitioned in worker", models.Metadata{
+		"source":            source,
+		"previous_status":   before.Status,
+		"current_status":    after.Status,
+		"previous_stage":    before.CurrentStage,
+		"current_stage":     after.CurrentStage,
+		"previous_error":    beforeErrorCode,
+		"current_error":     afterErrorCode,
+		"progress_percent":  after.ProgressPercent,
+		"selected_slot_id":  stringValueOrDefault(after.SelectedSlotID),
+	})
 	return nil
 }
 

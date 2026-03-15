@@ -4,6 +4,7 @@ import { JobStatusCard } from "../components/JobStatusCard";
 import { ProductLineEditor, type ProductLineMode } from "../components/ProductLineEditor";
 import { Reveal } from "../components/Reveal";
 import { SlotCard } from "../components/SlotCard";
+import { useHealth } from "../hooks/useHealth";
 import { useJob } from "../hooks/useJob";
 import { useJobLogs } from "../hooks/useJobLogs";
 import { usePreview } from "../hooks/usePreview";
@@ -35,6 +36,7 @@ function isPhaseThreeSettled(slot: Slot | null): boolean {
 
 export function JobPage() {
   const { jobId } = useParams();
+  const notionDashboardUrl = import.meta.env.VITE_NOTION_DASHBOARD_URL?.trim();
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [startPending, setStartPending] = useState(false);
@@ -75,6 +77,7 @@ export function JobPage() {
   const { preview, error: previewError, loading: previewLoading, refresh: refreshPreview } = usePreview(jobId, {
     poll: job?.status === "stitching",
   });
+  const { health, error: healthError, loading: healthLoading, refresh: refreshHealth } = useHealth({ poll: true });
 
   const selectedSlot =
     slots.find((slot) => slot.id === job?.selected_slot_id) ??
@@ -98,6 +101,7 @@ export function JobPage() {
     refreshSlots();
     refreshLogs();
     refreshPreview();
+    refreshHealth();
   }
 
   async function handleStartAnalysis() {
@@ -366,6 +370,13 @@ export function JobPage() {
           <span>{logsLoading ? "Loading logs..." : logsError ?? `${logs.length} log entry(ies)`}</span>
         </div>
         <p>Detected content language: {detectedContentLanguage.toUpperCase()}</p>
+        {notionDashboardUrl ? (
+          <p>
+            <a href={notionDashboardUrl} target="_blank" rel="noreferrer">
+              View in Notion
+            </a>
+          </p>
+        ) : null}
         {actionError ? <p className="form-message form-message--error">{actionError}</p> : null}
         {actionMessage ? <p className="form-message form-message--success">{actionMessage}</p> : null}
       </Reveal>
@@ -398,6 +409,32 @@ export function JobPage() {
               </div>
             ))}
           </div>
+        </section>
+
+        <section className="card">
+          <div className="list-block__header">
+            <div>
+              <p className="eyebrow">Notion audit</p>
+              <h3>Live integration status</h3>
+            </div>
+            <button className="button-secondary" type="button" onClick={refreshHealth} disabled={healthLoading}>
+              {healthLoading ? "Refreshing..." : "Refresh"}
+            </button>
+          </div>
+          {healthError ? <p className="form-message form-message--error">{healthError}</p> : null}
+          <p>
+            Audit sink: {healthLoading && !health ? "loading" : health?.audit?.enabled ? "enabled" : "disabled"}
+          </p>
+          <p>Status: {healthLoading && !health ? "loading" : health?.audit?.status ?? "unknown"}</p>
+          <p className="muted">{health?.audit?.details ?? "Audit status details are not available yet."}</p>
+          <p className="muted">Backend health: {health?.status ?? "unknown"}</p>
+          {notionDashboardUrl ? (
+            <div className="form-actions">
+              <a href={notionDashboardUrl} target="_blank" rel="noreferrer">
+                Open Notion dashboard
+              </a>
+            </div>
+          ) : null}
         </section>
 
         <section className="card">

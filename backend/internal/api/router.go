@@ -22,11 +22,12 @@ type Dependencies struct {
 	BlobClient           services.BlobStorageClient
 	RenderClient         services.RenderClient
 	CafaiGenerator       services.CafaiGenerator
+	AuditLogger          services.JobAuditLogger
 }
 
 func NewRouter(deps Dependencies) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/health", newHealthHandler(deps.Config.Version, deps.Config.ProviderProfile))
+	mux.HandleFunc("GET /api/health", newHealthHandler(deps.Config.Version, deps.Config.ProviderProfile, deps.AuditLogger))
 	registerRoutes(mux, deps)
 
 	handler := corsMiddleware(deps.Config.AllowedOrigins, mux)

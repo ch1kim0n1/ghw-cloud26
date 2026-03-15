@@ -44,6 +44,23 @@ describe("Phase 3 job page", () => {
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
 
+        if (url.includes("/api/health")) {
+          return {
+            ok: true,
+            json: async () => ({
+              status: "healthy",
+              timestamp: "2026-03-15T00:00:00Z",
+              version: "0.1.0",
+              provider_profile: "azure",
+              audit: {
+                enabled: true,
+                status: "healthy",
+                details: "notion audit sink connected",
+              },
+            }),
+          } as Response;
+        }
+
         if (url.includes("/api/jobs/job_1/start-analysis") && init?.method === "POST") {
           state.job = {
             ...state.job,
@@ -246,6 +263,23 @@ describe("Phase 3 job page", () => {
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
 
+        if (url.includes("/api/health")) {
+          return {
+            ok: true,
+            json: async () => ({
+              status: "healthy",
+              timestamp: "2026-03-15T00:00:00Z",
+              version: "0.1.0",
+              provider_profile: "azure",
+              audit: {
+                enabled: true,
+                status: "healthy",
+                details: "notion audit sink connected",
+              },
+            }),
+          } as Response;
+        }
+
         if (url.includes("/api/jobs/job_2/logs")) {
           return {
             ok: true,
@@ -382,6 +416,23 @@ describe("Phase 3 job page", () => {
       "fetch",
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
+
+        if (url.includes("/api/health")) {
+          return {
+            ok: true,
+            json: async () => ({
+              status: "healthy",
+              timestamp: "2026-03-15T00:00:00Z",
+              version: "0.1.0",
+              provider_profile: "azure",
+              audit: {
+                enabled: true,
+                status: "healthy",
+                details: "notion audit sink connected",
+              },
+            }),
+          } as Response;
+        }
 
         if (url.includes("/api/jobs/job_3/slots/manual-select") && init?.method === "POST") {
           state.job = {

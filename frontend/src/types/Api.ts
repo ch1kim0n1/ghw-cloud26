@@ -1,8 +1,15 @@
+export interface AuditHealthResponse {
+  enabled: boolean;
+  status: string;
+  details: string;
+}
+
 export interface HealthResponse {
   status: string;
   timestamp: string;
   version: string;
   provider_profile: string;
+  audit?: AuditHealthResponse;
 }
 
 export interface ApiErrorPayload {
