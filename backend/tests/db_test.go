@@ -24,6 +24,7 @@ func TestEnsureRuntimeDirectories(t *testing.T) {
 		filepath.Join(root, "tmp", "uploads", "campaigns"),
 		filepath.Join(root, "tmp", "artifacts"),
 		filepath.Join(root, "tmp", "previews"),
+		filepath.Join(root, "tmp", "website_ads"),
 	} {
 		info, err := os.Stat(path)
 		if err != nil {
@@ -59,6 +60,7 @@ func TestApplyMigrationsCreatesSchema(t *testing.T) {
 		"idx_slots_job_id",
 		"idx_slots_job_rank",
 		"idx_slots_status",
+		"idx_website_ad_jobs_created_at",
 		"job_logs",
 		"job_previews",
 		"jobs",
@@ -66,6 +68,7 @@ func TestApplyMigrationsCreatesSchema(t *testing.T) {
 		"scenes",
 		"schema_migrations",
 		"slots",
+		"website_ad_jobs",
 	}
 
 	got := schemaObjects(t, database)

@@ -66,6 +66,7 @@ func main() {
 		logger.Error("configure phase 4 provider clients", "error", err, "provider_profile", cfg.ProviderProfile)
 		os.Exit(1)
 	}
+	websiteAdsImageClient := services.NewWebsiteAdsImageClient(cfg, logger)
 	auditLogger := services.NewAsyncJobAuditLogger(services.NewNotionAuditLogger(cfg, logger), logger)
 	defer auditLogger.Close()
 	defer auditLogger.Wait()
@@ -108,18 +109,19 @@ func main() {
 	go processor.Run(ctx)
 
 	handler := api.NewRouter(api.Dependencies{
-		Config:               cfg,
-		Logger:               logger,
-		DB:                   sqliteDB,
-		AnalysisClient:       analysisClient,
-		OpenAIClient:         openAIClient,
-		MLClient:             mlClient,
-		AnchorFrameExtractor: services.NewFFmpegAnchorFrameExtractor(cfg.ArtifactsDir),
-		SpeechClient:         services.NewNoopSpeechClient(logger),
-		BlobClient:           blobClient,
-		RenderClient:         renderClient,
-		CafaiGenerator:       services.NewNoopCafaiGenerator(logger),
-		AuditLogger:          auditLogger,
+		Config:                cfg,
+		Logger:                logger,
+		DB:                    sqliteDB,
+		AnalysisClient:        analysisClient,
+		OpenAIClient:          openAIClient,
+		MLClient:              mlClient,
+		WebsiteAdsImageClient: websiteAdsImageClient,
+		AnchorFrameExtractor:  services.NewFFmpegAnchorFrameExtractor(cfg.ArtifactsDir),
+		SpeechClient:          services.NewNoopSpeechClient(logger),
+		BlobClient:            blobClient,
+		RenderClient:          renderClient,
+		CafaiGenerator:        services.NewNoopCafaiGenerator(logger),
+		AuditLogger:           auditLogger,
 	})
 
 	server := &http.Server{

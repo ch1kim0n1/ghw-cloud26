@@ -1,6 +1,6 @@
 import { NavLink, Route, Routes } from "react-router-dom";
 import { BrandMark } from "./components/BrandMark";
-import { HeartIcon, PlayIcon, UploadIcon, UsersIcon } from "./components/PinkIcons";
+import { HeartIcon, PlayIcon, SparkleIcon, UploadIcon, UsersIcon } from "./components/PinkIcons";
 import { publicCopy } from "./content/publicCopy";
 import { AboutPage } from "./pages/AboutPage";
 import { CreateCampaignPage } from "./pages/CreateCampaignPage";
@@ -10,6 +10,7 @@ import { PreviewPage } from "./pages/PreviewPage";
 import { ProductsPage } from "./pages/ProductsPage";
 import { ResultsPage } from "./pages/ResultsPage";
 import { UploadPage } from "./pages/UploadPage";
+import { WebsiteAdsPage } from "./pages/WebsiteAdsPage";
 
 function App() {
   const navClassName = ({ isActive }: { isActive: boolean }) => (isActive ? "active" : undefined);
@@ -34,6 +35,10 @@ function App() {
             <PlayIcon className="tab-nav__icon" />
             {publicCopy.nav.gallery}
           </NavLink>
+          <NavLink className={navClassName} to="/website-ads">
+            <SparkleIcon className="tab-nav__icon" />
+            {publicCopy.nav.websiteAds}
+          </NavLink>
           <NavLink className={navClassName} to="/upload">
             <UploadIcon className="tab-nav__icon" />
             {publicCopy.nav.upload}
@@ -56,6 +61,7 @@ function App() {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/gallery" element={<ResultsPage />} />
+          <Route path="/website-ads" element={<WebsiteAdsPage />} />
           <Route path="/upload" element={<UploadPage />} />
           <Route path="/about" element={<AboutPage />} />
           <Route path="/results" element={<ResultsPage />} />

@@ -21,6 +21,7 @@ func NewPathService(cfg config.Config) *PathService {
 			cfg.ArtifactsDir,
 			cfg.CacheDir,
 			cfg.PreviewsDir,
+			cfg.WebsiteAdsDir,
 		},
 	}
 }

@@ -237,6 +237,11 @@ textarea {
   gap: 20px;
 }
 
+.website-ads-hero,
+.website-ads-gallery {
+  padding: 28px;
+}
+
 .public-page--landing,
 .public-page--upload,
 .about-page {

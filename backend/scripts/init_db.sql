@@ -128,6 +128,22 @@ CREATE TABLE IF NOT EXISTS job_logs (
   FOREIGN KEY (job_id) REFERENCES jobs(id)
 );
 
+CREATE TABLE IF NOT EXISTS website_ad_jobs (
+  id TEXT PRIMARY KEY,
+  product_id TEXT REFERENCES products(id),
+  product_name TEXT NOT NULL,
+  product_description TEXT,
+  article_headline TEXT NOT NULL,
+  article_body TEXT NOT NULL,
+  brand_style TEXT,
+  prompt TEXT NOT NULL,
+  status TEXT NOT NULL,
+  banner_image_path TEXT,
+  vertical_image_path TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_campaigns_product_id ON campaigns(product_id);
 CREATE INDEX IF NOT EXISTS idx_jobs_campaign_id ON jobs(campaign_id);
 CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
@@ -137,3 +153,4 @@ CREATE INDEX IF NOT EXISTS idx_slots_job_rank ON slots(job_id, rank);
 CREATE INDEX IF NOT EXISTS idx_slots_status ON slots(status);
 CREATE INDEX IF NOT EXISTS idx_job_previews_job_id ON job_previews(job_id);
 CREATE INDEX IF NOT EXISTS idx_job_logs_job_id_timestamp ON job_logs(job_id, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_website_ad_jobs_created_at ON website_ad_jobs(created_at DESC, id DESC);

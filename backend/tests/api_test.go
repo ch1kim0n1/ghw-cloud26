@@ -224,6 +224,54 @@ func TestProductsAPI(t *testing.T) {
 	})
 }
 
+func TestWebsiteAdsAPI(t *testing.T) {
+	env := newAPIEnvWithWebsiteAdsClient(t, &fakeWebsiteAdsImageClient{
+		image: pngFixture(t),
+	})
+
+	product := insertProductFixture(t, env.database, "website ads soda")
+
+	rec := env.serve(http.MethodPost, "/api/website-ads", []byte(fmt.Sprintf(`{
+		"product_id": %q,
+		"article_headline": "Ancient Rome still knows how to stage a spectacle",
+		"article_body": "A travel feature about the Colosseum, torchlight, stone arches, crowds, and dramatic atmosphere.",
+		"brand_style": "luxury magazine"
+	}`, product.ID)), "application/json")
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var job models.WebsiteAdJob
+	decodeJSON(t, rec.Body.Bytes(), &job)
+	if job.Status != constants.JobStatusCompleted {
+		t.Fatalf("expected completed status, got %s", job.Status)
+	}
+	if job.BannerImageURL == "" || job.VerticalImageURL == "" {
+		t.Fatalf("expected asset urls, got %#v", job)
+	}
+
+	listRec := env.serve(http.MethodGet, "/api/website-ads", nil, "")
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", listRec.Code, listRec.Body.String())
+	}
+
+	var listPayload struct {
+		Jobs []models.WebsiteAdJob `json:"jobs"`
+	}
+	decodeJSON(t, listRec.Body.Bytes(), &listPayload)
+	if len(listPayload.Jobs) == 0 {
+		t.Fatal("expected at least one website ad job")
+	}
+
+	assetRec := env.serve(http.MethodGet, job.BannerImageURL, nil, "")
+	if assetRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", assetRec.Code, assetRec.Body.String())
+	}
+	if got := assetRec.Header().Get("Content-Type"); !strings.HasPrefix(got, "image/") {
+		t.Fatalf("expected image content type, got %q", got)
+	}
+}
+
 func TestCampaignsAPI(t *testing.T) {
 	requireMediaToolchain(t)
 	env := newAPIEnv(t)
@@ -1983,15 +2031,30 @@ func newAPIEnvWithPhaseTwoClients(t *testing.T, analysisClient services.Analysis
 func newAPIEnvWithPhaseThreeClients(t *testing.T, analysisClient services.AnalysisClient, openAIClient services.OpenAIClient, mlClient services.MLClient, frameExtractor services.AnchorFrameExtractor) apiEnv {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return newAPIEnvWithClients(t, analysisClient, openAIClient, mlClient, frameExtractor, services.NewNoopBlobStorageClient(logger), services.NewNoopRenderClient(logger))
+	return newAPIEnvWithClients(t, analysisClient, openAIClient, mlClient, services.NewNoopWebsiteAdsImageClient(), frameExtractor, services.NewNoopBlobStorageClient(logger), services.NewNoopRenderClient(logger))
 }
 
 func newAPIEnvWithPreviewClients(t *testing.T, analysisClient services.AnalysisClient, openAIClient services.OpenAIClient, mlClient services.MLClient, frameExtractor services.AnchorFrameExtractor, blobClient services.BlobStorageClient, renderClient services.RenderClient) apiEnv {
 	t.Helper()
-	return newAPIEnvWithClients(t, analysisClient, openAIClient, mlClient, frameExtractor, blobClient, renderClient)
+	return newAPIEnvWithClients(t, analysisClient, openAIClient, mlClient, services.NewNoopWebsiteAdsImageClient(), frameExtractor, blobClient, renderClient)
 }
 
-func newAPIEnvWithClients(t *testing.T, analysisClient services.AnalysisClient, openAIClient services.OpenAIClient, mlClient services.MLClient, frameExtractor services.AnchorFrameExtractor, blobClient services.BlobStorageClient, renderClient services.RenderClient) apiEnv {
+func newAPIEnvWithWebsiteAdsClient(t *testing.T, imageClient services.WebsiteAdsImageClient) apiEnv {
+	t.Helper()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	return newAPIEnvWithClients(
+		t,
+		services.NewNoopAnalysisClient(logger),
+		services.NewNoopOpenAIClient(logger),
+		services.NewNoopMLClient(logger),
+		imageClient,
+		&fakeAnchorFrameExtractor{},
+		services.NewNoopBlobStorageClient(logger),
+		services.NewNoopRenderClient(logger),
+	)
+}
+
+func newAPIEnvWithClients(t *testing.T, analysisClient services.AnalysisClient, openAIClient services.OpenAIClient, mlClient services.MLClient, websiteAdsImageClient services.WebsiteAdsImageClient, frameExtractor services.AnchorFrameExtractor, blobClient services.BlobStorageClient, renderClient services.RenderClient) apiEnv {
 	t.Helper()
 
 	root := t.TempDir()
@@ -2013,15 +2076,16 @@ func newAPIEnvWithClients(t *testing.T, analysisClient services.AnalysisClient, 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	handler := api.NewRouter(api.Dependencies{
-		Config:               cfg,
-		Logger:               logger,
-		DB:                   database,
-		AnalysisClient:       analysisClient,
-		OpenAIClient:         openAIClient,
-		MLClient:             mlClient,
-		AnchorFrameExtractor: frameExtractor,
-		BlobClient:           blobClient,
-		RenderClient:         renderClient,
+		Config:                cfg,
+		Logger:                logger,
+		DB:                    database,
+		AnalysisClient:        analysisClient,
+		OpenAIClient:          openAIClient,
+		MLClient:              mlClient,
+		WebsiteAdsImageClient: websiteAdsImageClient,
+		AnchorFrameExtractor:  frameExtractor,
+		BlobClient:            blobClient,
+		RenderClient:          renderClient,
 	})
 
 	jobService := services.NewJobService(
@@ -2382,6 +2446,21 @@ type fakeRenderClient struct {
 	submitCalls    int
 	pollCalls      int
 	lastSubmit     services.RenderRequest
+}
+
+type fakeWebsiteAdsImageClient struct {
+	image []byte
+	err   error
+}
+
+func (c *fakeWebsiteAdsImageClient) Generate(context.Context, services.WebsiteAdsImageGenerateRequest) (services.WebsiteAdsImageGenerateResponse, error) {
+	if c.err != nil {
+		return services.WebsiteAdsImageGenerateResponse{}, c.err
+	}
+	return services.WebsiteAdsImageGenerateResponse{
+		Image:       c.image,
+		ContentType: "image/png",
+	}, nil
 }
 
 func (c *fakeRenderClient) SubmitRender(_ context.Context, req services.RenderRequest) (services.RenderResponse, error) {
@@ -2977,6 +3056,7 @@ func testConfig(root string) config.Config {
 		ArtifactsDir:       filepath.Join(root, "tmp", "artifacts"),
 		CacheDir:           filepath.Join(root, "tmp", "cache"),
 		PreviewsDir:        filepath.Join(root, "tmp", "previews"),
+		WebsiteAdsDir:      filepath.Join(root, "tmp", "website_ads"),
 		AllowedOrigins:     []string{"http://localhost:5173"},
 		WorkerInterval:     5,
 		ShutdownTimeout:    10,

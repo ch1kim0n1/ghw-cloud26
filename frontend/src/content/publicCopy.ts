@@ -7,6 +7,7 @@ export const publicCopy = {
   nav: {
     home: "Home",
     gallery: "Gallery",
+    websiteAds: "Website Ads",
     upload: "Upload",
     about: "About",
   },
@@ -49,6 +50,12 @@ export const publicCopy = {
     aboutLede:
       "The About page is kept simple: who the two developers are and what each one focused on for the project.",
     aboutCta: "Meet the duo",
+  },
+  websiteAds: {
+    eyebrow: "Static ads, same pink universe",
+    title: "Generate website banners that match the article instead of shouting past it.",
+    lede:
+      "This page turns article context plus product metadata into a horizontal banner and a vertical sidebar ad, then keeps the newest generations in one little showcase wall.",
   },
   upload: {
     eyebrow: "Drop a new clip",

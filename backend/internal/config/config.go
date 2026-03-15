@@ -21,6 +21,7 @@ type Config struct {
 	ArtifactsDir                 string
 	CacheDir                     string
 	PreviewsDir                  string
+	WebsiteAdsDir                string
 	AllowedOrigins               []string
 	WorkerInterval               time.Duration
 	ShutdownTimeout              time.Duration
@@ -62,6 +63,10 @@ type Config struct {
 	VultrObjectStorageSecretKey  string
 	VultrRenderURL               string
 	VultrRenderAPIKey            string
+	HuggingFaceAPIToken          string
+	HuggingFaceBaseURL           string
+	HuggingFaceImageModel        string
+	HuggingFaceRequestTimeout    time.Duration
 }
 
 func Load() (Config, error) {
@@ -81,6 +86,7 @@ func Load() (Config, error) {
 		ArtifactsDir:                 filepath.Join(repoRoot, "tmp", "artifacts"),
 		CacheDir:                     filepath.Join(repoRoot, "tmp", "cache"),
 		PreviewsDir:                  filepath.Join(repoRoot, "tmp", "previews"),
+		WebsiteAdsDir:                filepath.Join(repoRoot, "tmp", "website_ads"),
 		AllowedOrigins:               splitCSV(getEnv("CAFAI_ALLOWED_ORIGINS", "http://localhost:5173")),
 		WorkerInterval:               getDurationEnv("CAFAI_WORKER_INTERVAL", 5*time.Second),
 		ShutdownTimeout:              getDurationEnv("CAFAI_SHUTDOWN_TIMEOUT", 10*time.Second),
@@ -122,6 +128,10 @@ func Load() (Config, error) {
 		VultrObjectStorageSecretKey:  os.Getenv("VULTR_OBJECT_STORAGE_SECRET_KEY"),
 		VultrRenderURL:               os.Getenv("VULTR_RENDER_URL"),
 		VultrRenderAPIKey:            os.Getenv("VULTR_RENDER_API_KEY"),
+		HuggingFaceAPIToken:          firstNonEmpty(os.Getenv("HUGGINGFACE_API_TOKEN"), os.Getenv("HF_TOKEN")),
+		HuggingFaceBaseURL:           getEnv("HUGGINGFACE_BASE_URL", "https://router.huggingface.co/hf-inference/models"),
+		HuggingFaceImageModel:        getEnv("HUGGINGFACE_IMAGE_MODEL", "stabilityai/stable-diffusion-xl-base-1.0"),
+		HuggingFaceRequestTimeout:    getDurationEnv("HUGGINGFACE_REQUEST_TIMEOUT", 90*time.Second),
 	}, nil
 }
 

@@ -11,18 +11,19 @@ import (
 )
 
 type Dependencies struct {
-	Config               config.Config
-	Logger               *slog.Logger
-	DB                   *sql.DB
-	AnalysisClient       services.AnalysisClient
-	OpenAIClient         services.OpenAIClient
-	MLClient             services.MLClient
-	AnchorFrameExtractor services.AnchorFrameExtractor
-	SpeechClient         services.SpeechClient
-	BlobClient           services.BlobStorageClient
-	RenderClient         services.RenderClient
-	CafaiGenerator       services.CafaiGenerator
-	AuditLogger          services.JobAuditLogger
+	Config                config.Config
+	Logger                *slog.Logger
+	DB                    *sql.DB
+	AnalysisClient        services.AnalysisClient
+	OpenAIClient          services.OpenAIClient
+	MLClient              services.MLClient
+	WebsiteAdsImageClient services.WebsiteAdsImageClient
+	AnchorFrameExtractor  services.AnchorFrameExtractor
+	SpeechClient          services.SpeechClient
+	BlobClient            services.BlobStorageClient
+	RenderClient          services.RenderClient
+	CafaiGenerator        services.CafaiGenerator
+	AuditLogger           services.JobAuditLogger
 }
 
 func NewRouter(deps Dependencies) http.Handler {
@@ -43,6 +44,7 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 	analysis := newAnalysisHandler(deps)
 	slots := newSlotsHandler(deps)
 	preview := newPreviewHandler(deps)
+	websiteAds := newWebsiteAdsHandler(deps)
 
 	mux.HandleFunc("POST /api/products", products)
 	mux.HandleFunc("GET /api/products", products)
@@ -63,6 +65,10 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 	mux.HandleFunc("GET /api/jobs/{job_id}/preview", preview)
 	mux.HandleFunc("GET /api/jobs/{job_id}/preview/stream", preview)
 	mux.HandleFunc("GET /api/jobs/{job_id}/preview/download", preview)
+	mux.HandleFunc("GET /api/website-ads", websiteAds)
+	mux.HandleFunc("POST /api/website-ads", websiteAds)
+	mux.HandleFunc("GET /api/website-ads/{job_id}", websiteAds)
+	mux.HandleFunc("GET /api/website-ads/{job_id}/assets/{format}", websiteAds)
 }
 
 func notImplementedHandler() http.HandlerFunc {
