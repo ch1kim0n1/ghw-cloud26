@@ -131,12 +131,12 @@ textarea {
 .brand-lockup {
   display: inline-flex;
   align-items: center;
-  gap: 12px;
+  min-width: 0;
 }
 
 .brand-lockup__mark {
-  width: 56px;
-  height: 56px;
+  width: clamp(148px, 18vw, 210px);
+  height: auto;
   flex: 0 0 auto;
 }
 

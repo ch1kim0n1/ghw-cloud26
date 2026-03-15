@@ -20,12 +20,8 @@ function App() {
   return (
     <div className="app-shell app-shell--voxel">
       <header className="app-header app-header--voxel">
-        <NavLink className="brand-lockup brand-lockup--voxel" to="/">
+        <NavLink className="brand-lockup brand-lockup--voxel" to="/" aria-label={`${publicCopy.brand.name} home`}>
           <BrandMark />
-          <span className="brand-lockup__text">
-            <strong>{publicCopy.brand.name}</strong>
-            <small>{publicCopy.brand.tagline}</small>
-          </span>
         </NavLink>
 
         <nav className="tab-nav" aria-label="Primary">
