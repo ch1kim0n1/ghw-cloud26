@@ -34,7 +34,7 @@ export function HealthStatusPanel() {
   if (error) {
     return (
       <section className="panel health-panel health-panel--error">
-        <p className="eyebrow">Backend</p>
+        <p className="eyebrow">System check</p>
         <h2>Connection failed</h2>
         <p>{error}</p>
       </section>
@@ -44,18 +44,18 @@ export function HealthStatusPanel() {
   if (!health) {
     return (
       <section className="panel health-panel">
-        <p className="eyebrow">Backend</p>
-        <h2>Checking health</h2>
-        <p>Loading `/api/health` from the local control plane.</p>
+        <p className="eyebrow">System check</p>
+        <h2>Checking live readiness</h2>
+        <p>Verifying the local control plane before the demo goes on screen.</p>
       </section>
     );
   }
 
   return (
     <section className="panel health-panel health-panel--ok">
-      <p className="eyebrow">Backend</p>
+      <p className="eyebrow">System check</p>
       <h2>{health.status}</h2>
-      <p>Version {health.version}</p>
+      <p>Runtime {health.version}</p>
       <p>Provider {health.provider_profile}</p>
       <p className="muted">Last response: {health.timestamp}</p>
     </section>

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { JobStatusCard } from "../components/JobStatusCard";
 import { ProductLineEditor, type ProductLineMode } from "../components/ProductLineEditor";
+import { Reveal } from "../components/Reveal";
 import { SlotCard } from "../components/SlotCard";
 import { useJob } from "../hooks/useJob";
 import { useJobLogs } from "../hooks/useJobLogs";
@@ -347,8 +348,8 @@ export function JobPage() {
       : undefined;
 
   return (
-    <div className="page-grid">
-      <section className="panel">
+    <div className="studio-page studio-page--job">
+      <Reveal as="section" className="studio-hero studio-hero--job">
         <p className="eyebrow">Job workflow</p>
         <h2>Job dashboard {jobId ?? "demo-job"}</h2>
         <p>
@@ -367,7 +368,7 @@ export function JobPage() {
         <p>Detected content language: {detectedContentLanguage.toUpperCase()}</p>
         {actionError ? <p className="form-message form-message--error">{actionError}</p> : null}
         {actionMessage ? <p className="form-message form-message--success">{actionMessage}</p> : null}
-      </section>
+      </Reveal>
 
       <div className="card-grid">
         <JobStatusCard
@@ -442,7 +443,7 @@ export function JobPage() {
         </section>
       </div>
 
-      <section className="panel">
+      <section className="panel panel--studio">
         <div className="list-block__header">
           <div>
             <p className="eyebrow">Slot review</p>
@@ -450,115 +451,119 @@ export function JobPage() {
           </div>
         </div>
         {slotsError ? <p className="form-message form-message--error">{slotsError}</p> : null}
-        {canSelectSlots ? (
-          <section className="card">
-            <div className="list-block__header">
-              <div>
-                <p className="eyebrow">Manual override</p>
-                <h3>Pick a slot by time</h3>
-              </div>
-            </div>
-            <p className="muted">
-              {noAutoSlotFound
-                ? "Automatic ranking found no suitable slot. Manual selection is the primary recovery path."
-                : "Use manual selection when you want to override the automatic slot proposals."}
-            </p>
-            <div className="form-grid">
-              <div className="field-row">
-                <label className="field">
-                  <span>Start seconds</span>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.1"
-                    value={manualStartSeconds}
-                    onChange={(event) => setManualStartSeconds(event.target.value)}
-                  />
-                </label>
-                <label className="field">
-                  <span>End seconds</span>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.1"
-                    value={manualEndSeconds}
-                    onChange={(event) => setManualEndSeconds(event.target.value)}
-                  />
-                </label>
-              </div>
-              <div className="form-actions">
-                <button type="button" onClick={handleManualSelect} disabled={manualSelectPending}>
-                  {manualSelectPending ? "Selecting..." : "Select manual slot"}
-                </button>
-              </div>
-            </div>
-          </section>
-        ) : null}
         {canSelectSlots || selectedSlot ? (
-          <>
-            <section className="card">
-              <div className="list-block__header">
-                <div>
-                  <p className="eyebrow">Manual generation import</p>
-                  <h3>Use a locally generated clip</h3>
-                </div>
-              </div>
-              <p className="muted">
-                {selectedSlot
-                  ? "Import the generated bridge clip into the currently selected slot, then render the preview normally."
-                  : "If no slot is selected yet, provide the generated clip plus anchor times inside one analyzed scene."}
-              </p>
-              <div className="form-grid">
-                <label className="field">
-                  <span>Generated clip path</span>
-                  <input
-                    type="text"
-                    placeholder="/absolute/path/to/generated.mp4"
-                    value={manualImportClipPath}
-                    onChange={(event) => setManualImportClipPath(event.target.value)}
-                  />
-                </label>
-                <label className="field">
-                  <span>Generated audio path (optional)</span>
-                  <input
-                    type="text"
-                    placeholder="/absolute/path/to/generated.wav"
-                    value={manualImportAudioPath}
-                    onChange={(event) => setManualImportAudioPath(event.target.value)}
-                  />
-                </label>
-                {!selectedSlot ? (
-                  <div className="field-row">
-                    <label className="field">
-                      <span>Import start seconds</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.1"
-                        value={manualImportStartSeconds}
-                        onChange={(event) => setManualImportStartSeconds(event.target.value)}
-                      />
-                    </label>
-                    <label className="field">
-                      <span>Import end seconds</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.1"
-                        value={manualImportEndSeconds}
-                        onChange={(event) => setManualImportEndSeconds(event.target.value)}
-                      />
-                    </label>
+          <details className="studio-disclosure" open={noAutoSlotFound}>
+            <summary>Advanced recovery and manual overrides</summary>
+            <div className="studio-disclosure__content">
+              {canSelectSlots ? (
+                <section className="card">
+                  <div className="list-block__header">
+                    <div>
+                      <p className="eyebrow">Manual override</p>
+                      <h3>Pick a slot by time</h3>
+                    </div>
                   </div>
-                ) : null}
-                <div className="form-actions">
-                  <button type="button" onClick={handleManualImport} disabled={manualImportPending}>
-                    {manualImportPending ? "Importing..." : "Import generated clip"}
-                  </button>
+                  <p className="muted">
+                    {noAutoSlotFound
+                      ? "Automatic ranking found no suitable slot. Manual selection is the primary recovery path."
+                      : "Use manual selection when you want to override the automatic slot proposals."}
+                  </p>
+                  <div className="form-grid">
+                    <div className="field-row">
+                      <label className="field">
+                        <span>Start seconds</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.1"
+                          value={manualStartSeconds}
+                          onChange={(event) => setManualStartSeconds(event.target.value)}
+                        />
+                      </label>
+                      <label className="field">
+                        <span>End seconds</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.1"
+                          value={manualEndSeconds}
+                          onChange={(event) => setManualEndSeconds(event.target.value)}
+                        />
+                      </label>
+                    </div>
+                    <div className="form-actions">
+                      <button type="button" onClick={handleManualSelect} disabled={manualSelectPending}>
+                        {manualSelectPending ? "Selecting..." : "Select manual slot"}
+                      </button>
+                    </div>
+                  </div>
+                </section>
+              ) : null}
+
+              <section className="card">
+                <div className="list-block__header">
+                  <div>
+                    <p className="eyebrow">Manual generation import</p>
+                    <h3>Use a locally generated clip</h3>
+                  </div>
                 </div>
-              </div>
-            </section>
-          </>
+                <p className="muted">
+                  {selectedSlot
+                    ? "Import the generated bridge clip into the currently selected slot, then render the preview normally."
+                    : "If no slot is selected yet, provide the generated clip plus anchor times inside one analyzed scene."}
+                </p>
+                <div className="form-grid">
+                  <label className="field">
+                    <span>Generated clip path</span>
+                    <input
+                      type="text"
+                      placeholder="/absolute/path/to/generated.mp4"
+                      value={manualImportClipPath}
+                      onChange={(event) => setManualImportClipPath(event.target.value)}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Generated audio path (optional)</span>
+                    <input
+                      type="text"
+                      placeholder="/absolute/path/to/generated.wav"
+                      value={manualImportAudioPath}
+                      onChange={(event) => setManualImportAudioPath(event.target.value)}
+                    />
+                  </label>
+                  {!selectedSlot ? (
+                    <div className="field-row">
+                      <label className="field">
+                        <span>Import start seconds</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.1"
+                          value={manualImportStartSeconds}
+                          onChange={(event) => setManualImportStartSeconds(event.target.value)}
+                        />
+                      </label>
+                      <label className="field">
+                        <span>Import end seconds</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.1"
+                          value={manualImportEndSeconds}
+                          onChange={(event) => setManualImportEndSeconds(event.target.value)}
+                        />
+                      </label>
+                    </div>
+                  ) : null}
+                  <div className="form-actions">
+                    <button type="button" onClick={handleManualImport} disabled={manualImportPending}>
+                      {manualImportPending ? "Importing..." : "Import generated clip"}
+                    </button>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </details>
         ) : null}
         {!slotsLoading && slots.length === 0 ? <p>No slots available yet.</p> : null}
         <div className="card-grid">
@@ -576,7 +581,7 @@ export function JobPage() {
       </section>
 
       {selectedSlot ? (
-        <section className="panel">
+        <section className="panel panel--studio">
           <div className="list-block__header">
             <div>
               <p className="eyebrow">Selected slot</p>

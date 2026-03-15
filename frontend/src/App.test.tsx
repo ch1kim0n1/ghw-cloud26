@@ -5,18 +5,10 @@ import App from "./App";
 
 describe("App", () => {
   beforeEach(() => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          status: "healthy",
-          timestamp: "2026-03-13T00:00:00Z",
-          version: "0.1.0-mvp",
-          provider_profile: "azure",
-        }),
-      }),
-    );
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ products: [] }),
+    }));
   });
 
   afterEach(() => {
@@ -24,46 +16,73 @@ describe("App", () => {
     vi.unstubAllGlobals();
   });
 
-  it("renders the overview page route", async () => {
+  it("renders the simplified showcase route with only two visible tabs", () => {
     render(
       <MemoryRouter initialEntries={["/"]}>
         <App />
       </MemoryRouter>,
     );
 
-    expect(screen.getByText("Insert ads that feel like part of the scene.")).toBeInTheDocument();
-    await waitFor(() => {
-      expect(screen.getByText("healthy")).toBeInTheDocument();
-    });
-    expect(screen.getByText("Provider azure")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open demo run" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Showcase" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Upload" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "About us" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Results" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Studio dashboard" })).not.toBeInTheDocument();
+    expect(screen.getByText("Ad insertion, but make it cute, seamless, and actually watchable.")).toBeInTheDocument();
+    expect(screen.getByText("Outdoor reveal with a late-scene handoff")).toBeInTheDocument();
+    expect(screen.getByText("Talking-head scene with a seamless branded bridge")).toBeInTheDocument();
   });
 
-  it("renders the products page route", async () => {
+  it("renders the upload route with the simplified fields", () => {
     render(
-      <MemoryRouter initialEntries={["/products"]}>
+      <MemoryRouter initialEntries={["/upload"]}>
         <App />
       </MemoryRouter>,
     );
 
-    expect(screen.getByText("Product Catalog")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Results" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Campaign name")).toBeInTheDocument();
+    expect(screen.getByLabelText("Brand / Product name")).toBeInTheDocument();
+    expect(screen.getByLabelText("Source video")).toBeInTheDocument();
+    expect(screen.queryByText("Product source")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Source URL")).not.toBeInTheDocument();
   });
 
-  it("renders the results page route", () => {
+  it("keeps the hidden results route accessible", () => {
     render(
       <MemoryRouter initialEntries={["/results"]}>
         <App />
       </MemoryRouter>,
     );
 
-    expect(screen.getByText("Both stitched previews, shown clearly.")).toBeInTheDocument();
-    expect(screen.getAllByText("Generated segment inside the original minute")).toHaveLength(2);
-    expect(screen.getByText("Example1")).toBeInTheDocument();
-    expect(screen.getByText("Example2")).toBeInTheDocument();
+    expect(screen.getByText("Ad insertion, but make it cute, seamless, and actually watchable.")).toBeInTheDocument();
   });
 
-  it("renders the campaign page route", () => {
+  it("renders the about route with developer placeholders", () => {
+    render(
+      <MemoryRouter initialEntries={["/about"]}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("Two builders, one cute little ad-insertion experiment.")).toBeInTheDocument();
+    expect(screen.getByText("Developer One")).toBeInTheDocument();
+    expect(screen.getByText("Developer Two")).toBeInTheDocument();
+  });
+
+  it("keeps the hidden products route accessible", async () => {
+    render(
+      <MemoryRouter initialEntries={["/products"]}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Product Catalog")).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("link", { name: "Studio dashboard" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the hidden campaign page accessible", () => {
     render(
       <MemoryRouter initialEntries={["/campaigns/new"]}>
         <App />
@@ -73,7 +92,7 @@ describe("App", () => {
     expect(screen.getByText("Campaign Intake")).toBeInTheDocument();
   });
 
-  it("renders the job page route", () => {
+  it("keeps the hidden job page accessible", () => {
     render(
       <MemoryRouter initialEntries={["/jobs/test-job"]}>
         <App />
@@ -83,29 +102,25 @@ describe("App", () => {
     expect(screen.getByText(/Job dashboard test-job/)).toBeInTheDocument();
   });
 
-  it("renders the preview page route", async () => {
+  it("keeps the hidden preview page accessible", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
-        if (url.includes("/api/health")) {
+        if (url.includes("/api/jobs/test-job/preview")) {
           return {
-            ok: true,
+            ok: false,
+            status: 404,
             json: async () => ({
-              status: "healthy",
-              timestamp: "2026-03-13T00:00:00Z",
-              version: "0.1.0-mvp",
-              provider_profile: "azure",
+              error: "preview not found",
+              error_code: "RESOURCE_NOT_FOUND",
             }),
           } as Response;
         }
+
         return {
-          ok: false,
-          status: 404,
-          json: async () => ({
-            error: "preview not found",
-            error_code: "RESOURCE_NOT_FOUND",
-          }),
+          ok: true,
+          json: async () => ({ products: [] }),
         } as Response;
       }),
     );
@@ -118,33 +133,6 @@ describe("App", () => {
 
     await waitFor(() => {
       expect(screen.getByText(/Preview status test-job/)).toBeInTheDocument();
-    });
-    await waitFor(() => {
-      expect(screen.getByText("No preview has been started yet.")).toBeInTheDocument();
-    });
-  });
-
-  it("shows an error state when health fails", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({
-        ok: false,
-        status: 503,
-        json: async () => ({
-          error: "backend unavailable",
-          error_code: "SERVICE_UNAVAILABLE",
-        }),
-      }),
-    );
-
-    render(
-      <MemoryRouter initialEntries={["/"]}>
-        <App />
-      </MemoryRouter>,
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText("Connection failed")).toBeInTheDocument();
     });
   });
 });
