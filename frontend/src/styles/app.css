@@ -238,7 +238,9 @@ textarea {
 }
 
 .website-ads-hero,
-.website-ads-gallery {
+.website-ads-gallery,
+.website-ads-preview-wall,
+.website-ads-showcase {
   padding: 28px;
 }
 

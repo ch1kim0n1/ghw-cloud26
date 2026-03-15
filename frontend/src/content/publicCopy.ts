@@ -53,9 +53,9 @@ export const publicCopy = {
   },
   websiteAds: {
     eyebrow: "Static ads, same pink universe",
-    title: "Generate website banners that match the article instead of shouting past it.",
+    title: "Three real-site website ad previews, each with injected placements.",
     lede:
-      "This page turns article context plus product metadata into a horizontal banner and a vertical sidebar ad, then keeps the newest generations in one little showcase wall.",
+      "The website ads section now behaves like a proof gallery: each example shows a real captured page with the banner and vertical ad baked directly into the screenshot.",
   },
   upload: {
     eyebrow: "Drop a new clip",
