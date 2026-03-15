@@ -65,4 +65,11 @@ export const websiteAdsContent = {
       },
     },
   ],
+  styleOptions: [
+    "playful editorial",
+    "clean minimal",
+    "retro-futurist",
+    "luxury magazine",
+    "soft pastel",
+  ],
 } as const;

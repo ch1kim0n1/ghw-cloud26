@@ -1,4 +1,5 @@
 import { ShowcaseResult } from "../components/ShowcaseResult";
+import { WebsiteAdsShowcase } from "../components/WebsiteAdsShowcase";
 import { publicCopy } from "../content/publicCopy";
 
 export function ResultsPage() {
@@ -12,6 +13,11 @@ export function ResultsPage() {
         </div>
       </section>
       <ShowcaseResult />
+      <WebsiteAdsShowcase
+        eyebrow="Static ad gallery"
+        title="Website ad previews live next to the video examples"
+        lede="The gallery now carries both proof types: stitched video outputs and static website-ad placements captured on real pages."
+      />
     </div>
   );
 }

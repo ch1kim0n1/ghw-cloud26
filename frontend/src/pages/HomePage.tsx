@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { FloatingDecor } from "../components/FloatingDecor";
 import { HeartIcon, PlayIcon, SparkleIcon, UploadIcon } from "../components/PinkIcons";
 import { Reveal, StaggerItem, StaggerList } from "../components/Reveal";
+import { WebsiteAdsShowcase } from "../components/WebsiteAdsShowcase";
 import { demoExamples, demoSteps, featuredDemoExample, heroStats, proofPoints } from "../content/demoContent";
 import { publicCopy } from "../content/publicCopy";
 
@@ -262,6 +263,14 @@ export function HomePage() {
           <PlayIcon className="inline-icon" />
           {publicCopy.landing.teaserCta}
         </Link>
+      </Reveal>
+
+      <Reveal delay={0.13}>
+        <WebsiteAdsShowcase
+          eyebrow="Static ad channel"
+          title="CAFAI also shows off static website ads"
+          lede="The same demo surface now includes three static-ad proofs, so the homepage shows both stitched video ads and injected website placements together."
+        />
       </Reveal>
 
       <Reveal as="section" className="landing-cta voxel-panel" delay={0.14}>

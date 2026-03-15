@@ -1,6 +1,7 @@
-import { NavLink, Route, Routes } from "react-router-dom";
+import { Navigate, NavLink, Route, Routes } from "react-router-dom";
 import { BrandMark } from "./components/BrandMark";
 import { HeartIcon, PlayIcon, SparkleIcon, UploadIcon, UsersIcon } from "./components/PinkIcons";
+import { runtimeConfig } from "./config/runtime";
 import { publicCopy } from "./content/publicCopy";
 import { AboutPage } from "./pages/AboutPage";
 import { CreateCampaignPage } from "./pages/CreateCampaignPage";
@@ -14,6 +15,7 @@ import { WebsiteAdsPage } from "./pages/WebsiteAdsPage";
 
 function App() {
   const navClassName = ({ isActive }: { isActive: boolean }) => (isActive ? "active" : undefined);
+  const showcaseMode = runtimeConfig.showcaseMode;
 
   return (
     <div className="app-shell app-shell--voxel">
@@ -61,14 +63,19 @@ function App() {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/gallery" element={<ResultsPage />} />
+          <Route path="/results" element={<ResultsPage />} />
           <Route path="/website-ads" element={<WebsiteAdsPage />} />
           <Route path="/upload" element={<UploadPage />} />
           <Route path="/about" element={<AboutPage />} />
-          <Route path="/results" element={<ResultsPage />} />
-          <Route path="/products" element={<ProductsPage />} />
-          <Route path="/campaigns/new" element={<CreateCampaignPage />} />
-          <Route path="/jobs/:jobId/preview" element={<PreviewPage />} />
-          <Route path="/jobs/:jobId" element={<JobPage />} />
+          {showcaseMode ? null : (
+            <>
+              <Route path="/products" element={<ProductsPage />} />
+              <Route path="/campaigns/new" element={<CreateCampaignPage />} />
+              <Route path="/jobs/:jobId/preview" element={<PreviewPage />} />
+              <Route path="/jobs/:jobId" element={<JobPage />} />
+            </>
+          )}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
     </div>

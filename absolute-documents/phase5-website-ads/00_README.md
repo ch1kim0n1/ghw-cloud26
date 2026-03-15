@@ -4,6 +4,22 @@
 
 This folder contains comprehensive specifications for Phase 5 of the CAFAI platform: **Dynamic Website Ads**. This feature extends CAFAI to generate context-aware AI-generated banner assets for websites, complementing the existing video ad insertion capabilities (Phases 0-4).
 
+## Current Implementation Snapshot
+
+The codebase now includes a shipped subset of this feature:
+
+- frontend upload toggle for `Website Ad`
+- synchronous backend generation of banner + vertical outputs
+- SQLite persistence for website ad jobs
+- local asset storage under `tmp/website_ads`
+- frontend showcase pages and injected placement previews
+
+The document set in this folder still represents the broader Phase 5 design target.
+
+If you want the implementation guide for what exists in the repo today, read:
+
+- [`backend/docs/WEBSITE_ADS_FEATURE.md`](../../backend/docs/WEBSITE_ADS_FEATURE.md)
+
 ## Reading Order
 
 Recommended reading order for new team members:
@@ -73,16 +89,17 @@ Recommended reading order for new team members:
 
 **New to Phase 5?**
 
-1. Start with 01_Product_Design_Document.md (15 min read)
-2. Skim 02_System_Architecture_Document.md (15 min read)
-3. Read 03_Technical_Specifications.md in full (30 min read)
-4. Use 04_API_Contracts.md and 05_Data_Schema_Definitions.md as reference
+1. Read the shipped implementation guide in `backend/docs/WEBSITE_ADS_FEATURE.md`
+2. Start with 01_Product_Design_Document.md
+3. Skim 02_System_Architecture_Document.md
+4. Read 03_Technical_Specifications.md in full
+5. Use 04_API_Contracts.md and 05_Data_Schema_Definitions.md as reference
 
-**Total onboarding time: ~1 hour**
+**Total onboarding time: ~1 hour for the design set, plus ~10 minutes for the shipped implementation guide**
 
 ## Status
 
-- **Phase 5 Status:** In Design (ready for implementation post-Phase 4)
+- **Phase 5 Status:** Partially implemented, with broader design work still documented here
 - **Last Updated:** March 2026
 - **Owner:** CAFAI Platform Team
 
