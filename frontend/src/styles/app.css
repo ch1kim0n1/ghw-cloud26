@@ -117,10 +117,10 @@ textarea {
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
-  gap: 18px;
-  padding: 16px 18px;
+  gap: 14px;
+  padding: 10px 14px;
   border: 3px solid rgba(255, 255, 255, 0.95);
-  border-radius: 28px;
+  border-radius: 22px;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 237, 246, 0.96)),
     linear-gradient(90deg, rgba(255, 255, 255, 0.35), transparent);
@@ -135,7 +135,7 @@ textarea {
 }
 
 .brand-lockup__mark {
-  width: clamp(148px, 18vw, 210px);
+  width: clamp(132px, 16vw, 188px);
   height: auto;
   flex: 0 0 auto;
 }
@@ -162,21 +162,21 @@ textarea {
   justify-self: center;
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px;
+  gap: 6px;
+  padding: 4px;
   border-radius: 999px;
   background: rgba(255, 214, 234, 0.78);
   border: 2px solid rgba(255, 255, 255, 0.8);
 }
 
 .tab-nav a {
-  min-height: 44px;
-  padding: 0 18px;
+  min-height: 38px;
+  padding: 0 14px;
   border-radius: 999px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
   color: var(--text-secondary);
   font-weight: 800;
   transition: transform 140ms ease, background 140ms ease, color 140ms ease, box-shadow 140ms ease;
@@ -192,8 +192,8 @@ textarea {
 
 .tab-nav__icon,
 .inline-icon {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   flex: 0 0 auto;
 }
 
@@ -207,17 +207,17 @@ textarea {
 }
 
 .header-badge {
-  min-height: 40px;
-  padding: 0 14px;
+  min-height: 36px;
+  padding: 0 12px;
   border-radius: 999px;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 226, 240, 0.96));
   border: 2px solid rgba(255, 255, 255, 0.88);
   color: var(--accent-cherry);
   font-family: var(--font-pixel);
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   text-transform: uppercase;
 }
 

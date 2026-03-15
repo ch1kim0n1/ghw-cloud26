@@ -1,149 +1,215 @@
-# ghw-cloud26
+<div align="center">
 
-Context-Aware Fused Ad Insertion (CAFAI) for MLH Global Hack Week.
+![CAFAI Logo](logo.png)
 
-CAFAI now demonstrates two ad formats inside one product surface:
+# CAFAI
+### Context-Aware Fused Ad Insertion
 
-- context-aware video ad insertion for short-form clips
-- context-aware static website ads for article and profile pages
+*Your creative companion for seamless, intelligent ad integrations*
 
-The app combines a React operator dashboard, a Go control plane, local SQLite metadata, media artifact storage, and optional Notion audit logging for end-to-end visibility.
+[![MLH Global Hack Week](https://img.shields.io/badge/MLH-Global%20Hack%20Week-pink?style=flat-square)](https://mlh.io)
+[![Go 1.25+](https://img.shields.io/badge/Go-1.25%2B-00ADD8?style=flat-square)](https://golang.org)
+[![React](https://img.shields.io/badge/React-61DAFB?logo=react&logoColor=black&style=flat-square)](https://react.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white&style=flat-square)](https://www.typescriptlang.org)
+
+---
+
+</div>
+
+<div align="center">
+
+![CAFAI Demo](thumbnail.png)
+
+</div>
 
 ## What It Does
 
-CAFAI is an operator-driven creative generation workflow with two lanes.
+CAFAI is an operator-driven creative generation workflow with two powerful lanes:
 
-### Video ad lane
+### Video Ad Lane
+Transform your videos with intelligent branded moments:
+- Upload a product and source video  
+- Analyze the video for perfect insertion windows
+- Select an automatic slot or manually override it
+- Generate a short branded bridge clip
+- Stitch the clip back into your footage
+- Export a beautiful downloadable preview MP4
 
-1. upload a product and source video
-2. analyze the video for candidate insertion windows
-3. select an automatic slot or manually override it
-4. generate a short branded bridge clip
-5. stitch that bridge clip back into the source footage
-6. export a downloadable preview MP4
+### Website Ad Lane  
+Create stunning ads from article context:
+- Choose a saved product or create one inline
+- Paste your article headline and content
+- Choose a visual direction
+- Generate banner and vertical ads
+- Review outputs in real-time gallery
+- Go live instantly
 
-### Website ad lane
+## Tech Stack
 
-1. switch the upload flow from `Video Ad` to `Website Ad`
-2. choose a saved product or enter an inline product
-3. paste the article headline and body/context
-4. choose a visual direction
-5. generate a banner and a vertical ad from the article context
-6. review the output in the website ads gallery and static showcase pages
+CAFAI combines best-of-breed tools across multiple domains:
 
-The current implementation uses:
+<table align="center">
+<tr>
+<td align="center">
 
-- Azure Video Indexer for scene analysis
-- Azure OpenAI for slot ranking, product line generation, and generation briefs
-- Higgsfield Kling as the primary Phase 3 generator
-- Azure ML as fallback video generation wiring
-- Hugging Face routed inference with `stabilityai/stable-diffusion-xl-base-1.0` for website ad images
-- Azure Blob Storage for temporary render artifacts
-- a local Go control plane, SQLite metadata store, and React dashboard
-- optional Notion MCP-style real-time audit sync for jobs and stage events
+**Frontend**  
+React + TypeScript  
+Vite + TailwindCSS
+</td>
+<td align="center">
 
-## Product Highlights
+**Backend**  
+Go REST API  
+SQLite + Worker
+</td>
+<td align="center">
 
-- one frontend now showcases both stitched video ads and static website ads
-- the upload page can branch into either the video pipeline or the website ad pipeline
-- website ad demos include injected placements on real captured pages
-- generated website ads are stored locally and streamed back through backend routes
-- optional Notion audit logging mirrors job and event history into operator-facing databases
+**AI/ML**  
+Azure Video Indexer  
+Azure OpenAI  
+Higgsfield Kling
+</td>
+</tr>
+<tr>
+<td align="center">
 
-## Screenshots
+**Generation**  
+Hugging Face SDXL  
+Azure ML Fallback
+</td>
+<td align="center">
 
-The frontend is a React dashboard with a voxel-inspired, pink-accented UI.
+**Storage**  
+Azure Blob Storage  
+Local Filesystem
+</td>
+<td align="center">
 
-**Home**
+**Audit**  
+Notion MCP (Optional)  
+Real-time Logging
+</td>
+</tr>
+</table>
 
-![Home](readme-assets/home.png)
-
-**Upload**
-
-![Upload](readme-assets/upload.png)
-
-**Gallery**
-
-![Gallery](readme-assets/gallery.png)
-
-**About**
-
-![About](readme-assets/about.png)
-
-**Proof room**
-
-![Proof room](readme-assets/proof-room.png)
-
-## Website Ads Showcase
-
-The website-ad track is now visible in the main product, the upload flow, and the dedicated showcase pages.
-
-### Example 1: Britannica / Julius Caesar
-
-![Website ads example 1](frontend/public/website-ads/example1/injected-preview.png)
-
-### Example 2: Forbes / Ted Turner
-
-![Website ads example 2](frontend/public/website-ads/example2/injected-preview.png)
-
-### Example 3: Education About Asia / Demon Slayer article
-
-![Website ads example 3](frontend/public/website-ads/example3/injected-preview.png)
-
-## Demo Results
-
-### Video ads
-
-The app showcases three polished stitched-video examples. Each includes a final preview, generated bridge asset, and anchor-frame evidence.
-
-#### Featured: Pixel Pop Energy
-
-Streamer close-up with an early energy-drink insert. The branded moment lands right after the opening beat.
-
-| Final stitched preview | Generated bridge |
-|------------------------|------------------|
-| [example3-final.mp4](frontend/public/demo/example3-final.mp4) | ![example3-generated](frontend/public/demo/example3-generated.gif) |
-
-- **Source duration:** 82.2s
-- **Preview:** 88.5s
-- **Insert window:** 7.9s -> 8.6s
-- **Anchor frames:** 237 -> 259
-
-#### Bike Bloom Reveal
-
-Outdoor bicycle sequence with a late-scene handoff.
-
-| Final stitched preview | Generated bridge |
-|------------------------|------------------|
-| [example1-final.mp4](frontend/public/demo/example1-final.mp4) | ![example1-generated](frontend/public/demo/example1-generated.gif) |
-
-- **Source duration:** 59.5s
-- **Preview:** 64.5s
-- **Insert window:** 41.7s -> 43.4s
-- **Anchor frames:** 1250 -> 1300
-
-#### Desk Darling Bridge
-
-Desk-side talking head with a seamless branded bridge.
-
-| Final stitched preview | Generated bridge |
-|------------------------|------------------|
-| [example2-final.mp4](frontend/public/demo/example2-final.mp4) | ![example2-generated](frontend/public/demo/example2-generated.gif) |
-
-- **Source duration:** 59.0s
-- **Preview:** 65.5s
-- **Insert window:** 20.5s -> 21.0s
-- **Anchor frames:** 615 -> 630
-
-### Website ads
-
-The static ad lane currently showcases three article-driven examples and supports live generation through the backend:
-
-- a horizontal banner target at `1200x628`
-- a vertical sidebar target at `300x600`
-- article-aware prompt building from headline, article body, product data, and style direction
+---
 
 ## How Website Ads Work
+
+<div align="center">
+
+### Dashboard Showcase
+
+| Home | Upload | Gallery |
+|------|--------|---------|
+| ![Home](readme-assets/home.png) | ![Upload](readme-assets/upload.png) | ![Gallery](readme-assets/gallery.png) |
+
+| About | Proof Room |
+|-------|-----------|
+| ![About](readme-assets/about.png) | ![Proof room](readme-assets/proof-room.png) |
+
+</div>
+
+### Website Ads Showcase
+
+Bringing articles to life with AI-generated ads:
+
+<table align="center">
+<tr>
+<td align="center" width="33%">
+
+**Britannica / Julius Caesar**  
+![Website ads example 1](frontend/public/website-ads/example1/injected-preview.png)
+</td>
+<td align="center" width="33%">
+
+**Forbes / Ted Turner**  
+![Website ads example 2](frontend/public/website-ads/example2/injected-preview.png)
+</td>
+<td align="center" width="33%">
+
+**Education About Asia / Demon Slayer**  
+![Website ads example 3](frontend/public/website-ads/example3/injected-preview.png)
+</td>
+</tr>
+</table>
+
+---
+
+## Video Ad Results
+
+Three polished examples showcasing our engine's capabilities:
+
+### Featured: Pixel Pop Energy
+*Streamer close-up with an early energy-drink insert. The branded moment lands right after the opening beat.*
+
+<table align="center">
+<tr>
+<td align="center">
+
+**Final Stitched Preview**  
+[Play Video](frontend/public/demo/example3-final.mp4)
+</td>
+<td align="center">
+
+**Generated Bridge**  
+![example3-generated](frontend/public/demo/example3-generated.gif)
+</td>
+</tr>
+</table>
+
+**Metrics:**
+- Source: 82.2s → Preview: 88.5s
+- Insert Window: 7.9s → 8.6s  
+- Anchor Frames: 237 → 259
+
+### Bike Bloom Reveal
+*Outdoor bicycle sequence with a late-scene handoff.*
+
+<table align="center">
+<tr>
+<td align="center">
+
+**Final Stitched Preview**  
+[Play Video](frontend/public/demo/example1-final.mp4)
+</td>
+<td align="center">
+
+**Generated Bridge**  
+![example1-generated](frontend/public/demo/example1-generated.gif)
+</td>
+</tr>
+</table>
+
+**Metrics:**
+- Source: 59.5s → Preview: 64.5s
+- Insert Window: 41.7s → 43.4s
+- Anchor Frames: 1250 → 1300
+
+### Desk Darling Bridge  
+*Desk-side talking head with a seamless branded bridge.*
+
+<table align="center">
+<tr>
+<td align="center">
+
+**Final Stitched Preview**  
+[Play Video](frontend/public/demo/example2-final.mp4)
+</td>
+<td align="center">
+
+**Generated Bridge**  
+![example2-generated](frontend/public/demo/example2-generated.gif)
+</td>
+</tr>
+</table>
+
+**Metrics:**
+- Source: 59.0s → Preview: 65.5s
+- Insert Window: 20.5s → 21.0s
+- Anchor Frames: 615 → 630
+
+---
 
 The shipped website-ads flow is synchronous and intentionally simple:
 

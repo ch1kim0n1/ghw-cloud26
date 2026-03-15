@@ -1,5 +1,6 @@
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "framer-motion";
 import { CSSProperties, startTransition, useMemo, useState } from "react";
+import { contentSwapVariants, publicLayoutTransition, publicSwapTransition } from "./publicMotion";
 import { demoExamples, featuredDemoExample } from "../content/demoContent";
 import { publicCopy } from "../content/publicCopy";
 import { HeartIcon, PlayIcon, SparkleIcon } from "./PinkIcons";
@@ -10,6 +11,7 @@ interface ShowcaseResultProps {
 
 export function ShowcaseResult({ compact = false }: ShowcaseResultProps) {
   const [activeExampleId, setActiveExampleId] = useState(featuredDemoExample.id);
+  const reducedMotion = useReducedMotion();
   const activeExample = useMemo(
     () => demoExamples.find((example) => example.id === activeExampleId) ?? featuredDemoExample,
     [activeExampleId],
@@ -32,29 +34,41 @@ export function ShowcaseResult({ compact = false }: ShowcaseResultProps) {
         <p>{compact ? "The hidden route still keeps the examples one click away." : publicCopy.landing.galleryLede}</p>
       </div>
 
-      <div className="showcase-tabs" role="tablist" aria-label="Showcase examples">
-        {demoExamples.map((example) => {
-          const isActive = example.id === activeExample.id;
+      <LayoutGroup id="showcase-tabs">
+        <div className="showcase-tabs" role="tablist" aria-label="Showcase examples">
+          {demoExamples.map((example) => {
+            const isActive = example.id === activeExample.id;
 
-          return (
-            <button
-              key={example.id}
-              className={`showcase-tab${isActive ? " active" : ""}`}
-              type="button"
-              role="tab"
-              aria-selected={isActive}
-              onClick={() => {
-                startTransition(() => {
-                  setActiveExampleId(example.id);
-                });
-              }}
-            >
-              <span>{example.label}</span>
-              <strong>{example.displayName}</strong>
-            </button>
-          );
-        })}
-      </div>
+            return (
+              <motion.button
+                key={example.id}
+                className={`showcase-tab${isActive ? " active" : ""}`}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                whileHover={reducedMotion ? undefined : { y: -3 }}
+                whileTap={reducedMotion ? undefined : { scale: 0.99 }}
+                transition={publicLayoutTransition}
+                onClick={() => {
+                  startTransition(() => {
+                    setActiveExampleId(example.id);
+                  });
+                }}
+              >
+                {isActive ? (
+                  <motion.span
+                    className="selection-pill selection-pill--soft"
+                    layoutId="showcase-tab-indicator"
+                    transition={publicLayoutTransition}
+                  />
+                ) : null}
+                <span>{example.label}</span>
+                <strong>{example.displayName}</strong>
+              </motion.button>
+            );
+          })}
+        </div>
+      </LayoutGroup>
 
       <AnimatePresence mode="wait">
         <motion.article
@@ -62,10 +76,11 @@ export function ShowcaseResult({ compact = false }: ShowcaseResultProps) {
           className="showcase-focus"
           role="tabpanel"
           aria-label={activeExample.displayName}
-          initial={{ opacity: 0, y: 24 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -18 }}
-          transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+          initial={reducedMotion ? false : "hidden"}
+          animate="show"
+          exit={reducedMotion ? undefined : "exit"}
+          variants={contentSwapVariants}
+          transition={publicSwapTransition}
           style={paletteStyle}
         >
           <div className="showcase-focus__copy">
@@ -80,6 +95,7 @@ export function ShowcaseResult({ compact = false }: ShowcaseResultProps) {
             </div>
 
             <div className="showcase-badges">
+              <span>Processed source clip</span>
               <span>{activeExample.scene}</span>
               <span>{activeExample.proofLabels.window}</span>
               <span>{activeExample.selectedWindow}</span>

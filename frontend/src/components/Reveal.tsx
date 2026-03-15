@@ -1,13 +1,15 @@
 import { motion, useReducedMotion } from "framer-motion";
 import type { PropsWithChildren, ReactNode } from "react";
+import { buildEnterVariants, publicStagger, publicViewport, staggerContainerVariants, staggerItemVariants } from "./publicMotion";
 
 type RevealProps = PropsWithChildren<{
   className?: string;
   delay?: number;
   as?: "div" | "section" | "article";
+  distance?: number;
 }>;
 
-export function Reveal({ children, className, delay = 0, as = "div" }: RevealProps) {
+export function Reveal({ children, className, delay = 0, as = "div", distance = 24 }: RevealProps) {
   const reducedMotion = useReducedMotion();
   const Component = as === "section" ? motion.section : as === "article" ? motion.article : motion.div;
 
@@ -18,9 +20,11 @@ export function Reveal({ children, className, delay = 0, as = "div" }: RevealPro
   return (
     <Component
       className={className}
-      initial={{ opacity: 0, y: 24 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.65, ease: [0.22, 1, 0.36, 1], delay }}
+      initial="hidden"
+      whileInView="show"
+      viewport={publicViewport}
+      variants={buildEnterVariants(distance)}
+      transition={{ delay }}
     >
       {children}
     </Component>
@@ -43,15 +47,10 @@ export function StaggerList({ className, children }: StaggerListProps) {
     <motion.div
       className={className}
       initial="hidden"
-      animate="show"
-      variants={{
-        hidden: {},
-        show: {
-          transition: {
-            staggerChildren: 0.1,
-          },
-        },
-      }}
+      whileInView="show"
+      viewport={publicViewport}
+      variants={staggerContainerVariants}
+      transition={{ staggerChildren: publicStagger }}
     >
       {children}
     </motion.div>
@@ -74,11 +73,7 @@ export function StaggerItem({ children, className, as = "div" }: StaggerItemProp
   return (
     <Component
       className={className}
-      variants={{
-        hidden: { opacity: 0, y: 18 },
-        show: { opacity: 1, y: 0 },
-      }}
-      transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+      variants={staggerItemVariants}
     >
       {children}
     </Component>

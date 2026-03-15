@@ -1,8 +1,9 @@
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "framer-motion";
 import { lazy, Suspense, startTransition, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { FloatingDecor } from "../components/FloatingDecor";
 import { HeartIcon, PlayIcon, SparkleIcon, UploadIcon } from "../components/PinkIcons";
+import { contentSwapVariants, publicLayoutTransition, publicSwapTransition } from "../components/publicMotion";
 import { Reveal, StaggerItem, StaggerList } from "../components/Reveal";
 import { WebsiteAdsShowcase } from "../components/WebsiteAdsShowcase";
 import { demoExamples, demoSteps, featuredDemoExample, heroStats, proofPoints } from "../content/demoContent";
@@ -17,6 +18,7 @@ const proofStageOrder: ProofStageId[] = ["original", "window", "bridge", "final"
 export function HomePage() {
   const [activeExampleId, setActiveExampleId] = useState(featuredDemoExample.id);
   const [proofStage, setProofStage] = useState<ProofStageId>("final");
+  const reducedMotion = useReducedMotion();
   const activeExample = useMemo(
     () => demoExamples.find((example) => example.id === activeExampleId) ?? featuredDemoExample,
     [activeExampleId],
@@ -69,56 +71,81 @@ export function HomePage() {
 
         <Reveal className="landing-hero__stage" delay={0.12}>
           <div className="hero-preview-card">
-            <div className="hero-preview-card__top">
-              <span className="voxel-chip">
-                <HeartIcon className="inline-icon" />
-                {activeExample.label}
-              </span>
-              <p>{activeExample.scene}</p>
-            </div>
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={activeExample.id}
+                className="hero-preview-card__content"
+                initial={reducedMotion ? false : "hidden"}
+                animate="show"
+                exit={reducedMotion ? undefined : "exit"}
+                variants={contentSwapVariants}
+                transition={publicSwapTransition}
+              >
+                <div className="hero-preview-card__top">
+                  <span className="voxel-chip">
+                    <HeartIcon className="inline-icon" />
+                    {activeExample.label}
+                  </span>
+                  <p>{activeExample.scene}</p>
+                </div>
 
-            <div className="hero-preview-card__media">
-              <video controls playsInline poster={activeExample.finalPoster}>
-                <source src={activeExample.finalVideo} type="video/mp4" />
-              </video>
-            </div>
+                <div className="hero-preview-card__media">
+                  <video controls playsInline poster={activeExample.finalPoster}>
+                    <source src={activeExample.finalVideo} type="video/mp4" />
+                  </video>
+                </div>
 
-            <div className="hero-preview-card__bottom">
-              <div>
-                <h2>{activeExample.displayName}</h2>
-                <p>{activeExample.heroBlurb}</p>
-              </div>
-              <div className="showcase-badges">
-                <span>{activeExample.selectedWindow}</span>
-                <span>{activeExample.anchorFrames}</span>
-              </div>
-            </div>
+                <div className="hero-preview-card__bottom">
+                  <div>
+                    <h2>{activeExample.displayName}</h2>
+                    <p>{activeExample.heroBlurb}</p>
+                  </div>
+                  <div className="showcase-badges">
+                    <span>Processed demo clip</span>
+                    <span>{activeExample.selectedWindow}</span>
+                    <span>{activeExample.anchorFrames}</span>
+                  </div>
+                </div>
+              </motion.div>
+            </AnimatePresence>
           </div>
 
-          <div className="hero-scene-picker" role="tablist" aria-label="Featured demo selector">
-            {demoExamples.map((example) => {
-              const isActive = activeExample.id === example.id;
+          <LayoutGroup id="hero-scene-picker">
+            <div className="hero-scene-picker" role="tablist" aria-label="Featured demo selector">
+              {demoExamples.map((example) => {
+                const isActive = activeExample.id === example.id;
 
-              return (
-                <button
-                  className={`hero-scene-picker__button${isActive ? " active" : ""}`}
-                  key={example.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={isActive}
-                  onClick={() => {
-                    startTransition(() => {
-                      setActiveExampleId(example.id);
-                      setProofStage("final");
-                    });
-                  }}
-                >
-                  <strong>{example.label}</strong>
-                  <span>{example.shortTag}</span>
-                </button>
-              );
-            })}
-          </div>
+                return (
+                  <motion.button
+                    className={`hero-scene-picker__button${isActive ? " active" : ""}`}
+                    key={example.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    whileHover={reducedMotion ? undefined : { y: -3 }}
+                    whileTap={reducedMotion ? undefined : { scale: 0.985 }}
+                    transition={publicLayoutTransition}
+                    onClick={() => {
+                      startTransition(() => {
+                        setActiveExampleId(example.id);
+                        setProofStage("final");
+                      });
+                    }}
+                  >
+                    {isActive ? (
+                      <motion.span
+                        className="selection-pill selection-pill--soft"
+                        layoutId="hero-scene-indicator"
+                        transition={publicLayoutTransition}
+                      />
+                    ) : null}
+                    <strong>{example.label}</strong>
+                    <span>{example.shortTag}</span>
+                  </motion.button>
+                );
+              })}
+            </div>
+          </LayoutGroup>
         </Reveal>
       </section>
 
@@ -130,39 +157,52 @@ export function HomePage() {
         </div>
 
         <div className="proof-room__layout">
-          <div className="proof-rail" role="tablist" aria-label="Proof stages">
-            {proofStageOrder.map((stage) => {
-              const label = activeExample.proofLabels[stage];
-              const isActive = proofStage === stage;
+          <LayoutGroup id="proof-rail">
+            <div className="proof-rail" role="tablist" aria-label="Proof stages">
+              {proofStageOrder.map((stage) => {
+                const label = activeExample.proofLabels[stage];
+                const isActive = proofStage === stage;
 
-              return (
-                <button
-                  className={`proof-rail__button${isActive ? " active" : ""}`}
-                  key={stage}
-                  type="button"
-                  role="tab"
-                  aria-selected={isActive}
-                  onClick={() => {
-                    startTransition(() => {
-                      setProofStage(stage);
-                    });
-                  }}
-                >
-                  <small>{stage}</small>
-                  <strong>{label}</strong>
-                </button>
-              );
-            })}
-          </div>
+                return (
+                  <motion.button
+                    className={`proof-rail__button${isActive ? " active" : ""}`}
+                    key={stage}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    whileHover={reducedMotion ? undefined : { y: -2 }}
+                    whileTap={reducedMotion ? undefined : { scale: 0.99 }}
+                    transition={publicLayoutTransition}
+                    onClick={() => {
+                      startTransition(() => {
+                        setProofStage(stage);
+                      });
+                    }}
+                  >
+                    {isActive ? (
+                      <motion.span
+                        className="selection-pill selection-pill--rose"
+                        layoutId="proof-stage-indicator"
+                        transition={publicLayoutTransition}
+                      />
+                    ) : null}
+                    <small>{stage}</small>
+                    <strong>{label}</strong>
+                  </motion.button>
+                );
+              })}
+            </div>
+          </LayoutGroup>
 
           <AnimatePresence mode="wait">
             <motion.div
               key={`${activeExample.id}-${proofStage}`}
               className="proof-stage"
-              initial={{ opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -12 }}
-              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+              initial={reducedMotion ? false : "hidden"}
+              animate="show"
+              exit={reducedMotion ? undefined : "exit"}
+              variants={contentSwapVariants}
+              transition={publicSwapTransition}
               role="tabpanel"
               aria-label={activeExample.proofLabels[proofStage]}
             >
@@ -246,14 +286,19 @@ export function HomePage() {
             <motion.article
               key={example.id}
               className={`gallery-teaser__card${example.featured ? " active" : ""}`}
-              whileHover={{ y: -5 }}
-              transition={{ type: "spring", stiffness: 260, damping: 18 }}
+              whileHover={reducedMotion ? undefined : { y: -5, scale: 1.01 }}
+              whileTap={reducedMotion ? undefined : { scale: 0.992 }}
+              transition={publicLayoutTransition}
             >
               <img src={example.finalPoster} alt={`${example.displayName} poster`} />
               <div className="gallery-teaser__card-copy">
                 <span className="voxel-chip voxel-chip--soft">{example.featured ? "Featured on home" : "See in gallery"}</span>
                 <h3>{example.displayName}</h3>
                 <p>{example.heroBlurb}</p>
+                <div className="teaser-card__meta">
+                  <span>{example.scene}</span>
+                  <span>{example.proofLabels.final}</span>
+                </div>
               </div>
             </motion.article>
           ))}
@@ -302,13 +347,16 @@ export function HomePage() {
 
         <div className="about-teaser__grid">
           {publicCopy.about.cards.map((card) => (
-            <a
+            <motion.a
               className="founder-card founder-card--link founder-card--teaser voxel-panel"
               href={card.github}
               key={card.name}
               target="_blank"
               rel="noreferrer"
               aria-label={`${card.name} GitHub profile`}
+              whileHover={reducedMotion ? undefined : { y: -5 }}
+              whileTap={reducedMotion ? undefined : { scale: 0.992 }}
+              transition={publicLayoutTransition}
             >
               <div className="founder-card__avatar-frame">
                 <img className="founder-card__avatar" src={card.avatar} alt={`${card.name} profile meme`} />
@@ -319,7 +367,7 @@ export function HomePage() {
                 <p>{card.bio}</p>
                 <span className="founder-card__github">{card.githubLabel}</span>
               </div>
-            </a>
+            </motion.a>
           ))}
         </div>
 

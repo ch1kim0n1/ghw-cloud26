@@ -1,8 +1,7 @@
 import Lenis from "lenis";
 import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
-
-const publicRoutes = new Set(["/", "/about", "/gallery", "/upload", "/results"]);
+import { publicRoutePaths } from "./publicMotion";
 
 export function PublicMotionProvider() {
   const location = useLocation();
@@ -12,7 +11,7 @@ export function PublicMotionProvider() {
       return;
     }
 
-    const isPublicRoute = publicRoutes.has(location.pathname);
+    const isPublicRoute = publicRoutePaths.has(location.pathname);
     const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     if (!isPublicRoute || prefersReducedMotion) {
@@ -20,9 +19,9 @@ export function PublicMotionProvider() {
     }
 
     const lenis = new Lenis({
-      duration: 1.1,
+      duration: 0.92,
       smoothWheel: true,
-      touchMultiplier: 1.05,
+      touchMultiplier: 1.02,
     });
 
     let frameId = 0;
