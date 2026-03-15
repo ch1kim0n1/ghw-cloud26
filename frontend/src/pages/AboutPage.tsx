@@ -1,85 +1,35 @@
-import { HeartIcon, SparkleIcon, UsersIcon } from "../components/PinkIcons";
-
-const placeholderDevelopers = [
-  {
-    name: "Developer One",
-    role: "Frontend + product vibes",
-    bio: "Add your intro here later. This card is ready for a photo, links, and a real bio when you have them.",
-    initials: "D1",
-  },
-  {
-    name: "Developer Two",
-    role: "ML + pipeline magic",
-    bio: "Add your intro here later. This spot is ready for another teammate profile without needing a layout rewrite.",
-    initials: "D2",
-  },
-];
+import { publicCopy } from "../content/publicCopy";
 
 export function AboutPage() {
   return (
-    <div className="about-page">
-      <section className="about-card">
-        <span className="showcase-pill showcase-pill--pink">
-          <UsersIcon className="inline-icon" />
-          About us
-        </span>
-        <h1>Two builders, one cute little ad-insertion experiment.</h1>
-        <p>
-          This page is just a placeholder for now, but the layout is ready for two developer profiles, a short team
-          story, and links when you want to fill it in properly.
-        </p>
-
-        <div className="about-stats">
-          <span>
-            <SparkleIcon className="inline-icon" />
-            Demo-first frontend
-          </span>
-          <span>
-            <HeartIcon className="inline-icon" />
-            Placeholder team cards
-          </span>
-        </div>
+    <div className="about-page about-page--profiles">
+      <section className="about-hero voxel-panel">
+        <span className="voxel-chip">{publicCopy.about.eyebrow}</span>
+        <h1>{publicCopy.about.title}</h1>
+        <p>{publicCopy.about.lede}</p>
       </section>
 
-      <section className="team-grid" aria-label="Developer placeholders">
-        {placeholderDevelopers.map((developer) => (
-          <article className="developer-card" key={developer.name}>
-            <div className="developer-card__avatar" aria-hidden="true">
-              <span>{developer.initials}</span>
-            </div>
-            <div className="developer-card__copy">
-              <h2>{developer.name}</h2>
-              <p className="developer-card__role">{developer.role}</p>
-              <p>{developer.bio}</p>
-            </div>
-          </article>
-        ))}
-      </section>
-
-      <section className="pixel-pack-card">
-        <div className="pixel-pack-card__copy">
-          <span className="showcase-pill">
-            <SparkleIcon className="inline-icon" />
-            Pixel pack
-          </span>
-          <h2>Little pixel hearts are part of the public look now.</h2>
-          <p>
-            The sticker art comes from the free Pixel Hearts pack by TokyoGeisha on OpenGameArt, released under CC0.
-          </p>
+      <section className="team-grid" aria-label="CAFAI developers">
+        {publicCopy.about.cards.map((card) => (
           <a
-            className="cute-link"
-            href="https://opengameart.org/content/pixel-hearts"
+            className="founder-card founder-card--link voxel-panel"
+            href={card.github}
+            key={card.name}
             target="_blank"
             rel="noreferrer"
+            aria-label={`${card.name} GitHub profile`}
           >
-            View asset source
+            <div className="founder-card__avatar-frame">
+              <img className="founder-card__avatar" src={card.avatar} alt={`${card.name} profile meme`} />
+            </div>
+            <div className="founder-card__copy">
+              <h2>{card.name}</h2>
+              <p className="founder-card__role">{card.role}</p>
+              <p>{card.bio}</p>
+              <span className="founder-card__github">{card.githubLabel}</span>
+            </div>
           </a>
-        </div>
-
-        <div className="pixel-pack-card__art">
-          <img src="/pixel-hearts/pixel-hearts-preview.png" alt="Pixel hearts asset pack preview" />
-          <img src="/pixel-hearts/sprite-sheet.png" alt="Pixel hearts sprite sheet" />
-        </div>
+        ))}
       </section>
     </div>
   );

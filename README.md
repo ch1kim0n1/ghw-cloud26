@@ -23,6 +23,70 @@ The current implementation uses:
 - Azure Blob Storage for temporary render artifacts
 - a local Go control plane, SQLite metadata store, and React dashboard
 
+## Screenshots
+
+The frontend is a React dashboard with a voxel-inspired, pink-accented UI.
+
+**Home** — hero with featured demo video and proof wall CTA
+
+![Home](readme-assets/home.png)
+
+**Upload** — campaign name, brand, and MP4 dropzone
+
+![Upload](readme-assets/upload.png)
+
+**Gallery** — all three demo examples with video playback and proof strip
+
+![Gallery](readme-assets/gallery.png)
+
+**About** — team profiles (Vlad & Monika)
+
+![About](readme-assets/about.png)
+
+**Proof room** — four receipts (original frame, insert window, generated bridge, final cut) for each demo
+
+![Proof room](readme-assets/proof-room.png)
+
+## Demo Results & Videos
+
+The app showcases three polished examples. Each has a final stitched video, generated bridge preview, and anchor frames.
+
+### Featured: Pixel Pop Energy
+
+Streamer close-up with an early energy-drink insert. The branded moment lands right after the opening beat.
+
+| Final stitched preview | Generated bridge |
+|------------------------|------------------|
+| [example3-final.mp4](frontend/public/demo/example3-final.mp4) | ![example3-generated](frontend/public/demo/example3-generated.gif) |
+
+- **Source duration:** 82.2s → **Preview:** 88.5s
+- **Insert window:** 7.9s → 8.6s
+- **Anchor frames:** 237 → 259
+
+### Bike Bloom Reveal
+
+Outdoor bicycle sequence with a late-scene handoff.
+
+| Final stitched preview | Generated bridge |
+|------------------------|------------------|
+| [example1-final.mp4](frontend/public/demo/example1-final.mp4) | ![example1-generated](frontend/public/demo/example1-generated.gif) |
+
+- **Source duration:** 59.5s → **Preview:** 64.5s
+- **Insert window:** 41.7s → 43.4s
+- **Anchor frames:** 1250 → 1300
+
+### Desk Darling Bridge
+
+Desk-side talking head with a seamless branded bridge.
+
+| Final stitched preview | Generated bridge |
+|------------------------|------------------|
+| [example2-final.mp4](frontend/public/demo/example2-final.mp4) | ![example2-generated](frontend/public/demo/example2-generated.gif) |
+
+- **Source duration:** 59.0s → **Preview:** 65.5s
+- **Insert window:** 20.5s → 21.0s
+- **Anchor frames:** 615 → 630
+
 ## Hackathon Demo Flow
 
 The strongest current demo path is:
@@ -37,57 +101,27 @@ This repo now supports that manual recovery path explicitly, so a generated clip
 
 ## Validation Assets
 
-The repo includes a concrete validation package under [phase4-validation](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation).
+The repo includes a concrete validation package under [phase4-validation](phase4-validation).
 
-Product used in the demo:
+### Structure
 
-![Product Image](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/input/product/product.jpg)
+Each example lives under `phase4-validation/input/ExampleN/` and `phase4-validation/output/ExampleN/`:
 
-Source clip preview:
+| Example | Product | Source video | Generated bridge | Final preview |
+|---------|---------|---------------|------------------|---------------|
+| Example 1 | [product.jpg](phase4-validation/input/Example1/product/product.jpg) | [phase4_test_59s.mp4](phase4-validation/input/Example1/video/phase4_test_59s.mp4) | [hf_...mp4](phase4-validation/output/Example1/video/hf_20260314_191119_ba726ac9-6ed2-4ac1-b9e1-696055d5e81f.mp4) | [manual_import_preview_api.mp4](phase4-validation/output/Example1/manual_import_preview_api.mp4) |
+| Example 2 | [product.jpg](phase4-validation/input/Example2/product/product.jpg) | [example2_59s.mp4](phase4-validation/input/Example2/video/example2_59s.mp4) | [hf_...mp4](phase4-validation/output/Example2/video/hf_20260314_200445_73beb1a5-504f-4ac7-b174-ca69a5bc66a2.mp4) | [manual_import_preview_api.mp4](phase4-validation/output/Example2/manual_import_preview_api.mp4) |
+| Example 3 | [product.jpg](phase4-validation/input/Example3/product/product.jpg) | [videoplayback (1).mp4](phase4-validation/input/Example3/video/videoplayback%20(1).mp4) | [hf_...mp4](phase4-validation/output/Example3/video/hf_20260315_053749_592fecd7-ff36-4beb-acba-170ce0f16107.mp4) | — |
 
-![Source Preview](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/output/readme-assets/source-preview.gif)
+### Anchor frames
 
-Generated bridge clip preview:
+- Example 1: [start-frame.png](phase4-validation/output/Example1/start-stop-frames/start-frame.png), [stop-frame.png](phase4-validation/output/Example1/start-stop-frames/stop-frame.png)
+- Example 2: [start-frame.png](phase4-validation/output/Example2/start-stop-frames/start-frame.png), [stop-frame.png](phase4-validation/output/Example2/start-stop-frames/stop-frame.png)
+- Example 3: [1.png](phase4-validation/output/Example3/start-stop-frames/1.png), [2.png](phase4-validation/output/Example3/start-stop-frames/2.png)
 
-![Generated Preview](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/output/readme-assets/generated-preview.gif)
+### Product metadata
 
-Manual anchor frames used for import matching:
-
-![Start Frame](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/output/start-stop-frames/start-frame.png)
-![Stop Frame](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/output/start-stop-frames/stop-frame.png)
-
-Final stitched preview:
-
-![Final Preview](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/output/readme-assets/final-preview.gif)
-
-Downloadable source and result files:
-- full source video: [phase4_test.mp4](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/input/video/phase4_test.mp4)
-- short baseline clip used for repeated runs: [phase4_test_59s.mp4](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/input/video/phase4_test_59s.mp4)
-- overflow variant kept for reference: [phase4_test_60s.mp4](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/input/video/phase4_test_60s.mp4)
-- product metadata: [metadata.json](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/input/product/metadata.json)
-- manually generated bridge clip MP4: [hf_20260314_191119_ba726ac9-6ed2-4ac1-b9e1-696055d5e81f.mp4](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/output/video/hf_20260314_191119_ba726ac9-6ed2-4ac1-b9e1-696055d5e81f.mp4)
-- app-produced final preview MP4: [manual_import_preview_api.mp4](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/output/manual_import_preview_api.mp4)
-- earlier local stitched preview MP4: [manual_import_preview_local.mp4](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/output/manual_import_preview_local.mp4)
-
-## Demo Result
-
-For the current hackathon run:
-
-- source video used: the short baseline clip at [phase4_test_59s.mp4](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/input/video/phase4_test_59s.mp4)
-- product used: Pepsi Cola from [metadata.json](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/input/product/metadata.json)
-- generated bridge clip used for insertion: [hf_20260314_191119_ba726ac9-6ed2-4ac1-b9e1-696055d5e81f.mp4](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/output/video/hf_20260314_191119_ba726ac9-6ed2-4ac1-b9e1-696055d5e81f.mp4)
-- matched insertion anchors: approximately `7.068s` to `7.134s` in the source clip
-- final preview output from the app: [manual_import_preview_api.mp4](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/output/manual_import_preview_api.mp4)
-- final preview duration: about `64.50s`
-
-Preview summary:
-
-![Final Preview Result](/Users/pomoika/Documents/GitHub_repo/ghw-cloud26/phase4-validation/output/readme-assets/final-preview.gif)
-
-Why the final app preview now succeeds:
-- the manual generation import path worked
-- the live cloud render submission still failed at provider level
-- the backend now falls back to local `ffmpeg` stitching automatically and still marks the preview as completed
+All examples use [metadata.json](phase4-validation/input/Example1/product/metadata.json) (Pepsi Cola).
 
 ## Current Status
 
@@ -171,7 +205,8 @@ Important paths:
 - `backend/internal/worker`: polling worker
 - `backend/scripts/migrations`: executable SQL migrations
 - `frontend/src/pages`: dashboard pages
-- `frontend/src/services`: frontend API clients
+- `frontend/src/content/demoContent.ts`: demo examples metadata (synced with frontend)
+- `frontend/public/demo`: demo videos, GIFs, posters, frames
 - `phase4-validation/`: demo assets, provider outputs, and stitched results
 - `tmp/`: local runtime databases, artifacts, cache, previews, and debug output
 

@@ -1,8 +1,10 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, DragEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { FloatingDecor } from "../components/FloatingDecor";
+import { DownloadIcon, HeartIcon, SparkleIcon, UploadIcon } from "../components/PinkIcons";
+import { publicCopy } from "../content/publicCopy";
 import { useJob } from "../hooks/useJob";
 import { usePreview } from "../hooks/usePreview";
-import { DownloadIcon, HeartIcon, SparkleIcon, UploadIcon } from "../components/PinkIcons";
 import { startAnalysis } from "../services/analysisApi";
 import { createCampaign } from "../services/campaignsApi";
 import { getPreviewDownloadUrl } from "../services/previewApi";
@@ -17,9 +19,11 @@ const initialFormState = {
 export function UploadPage() {
   const [formState, setFormState] = useState(initialFormState);
   const [submitting, setSubmitting] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [createdJobId, setCreatedJobId] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const { job, error: jobError, loading: jobLoading } = useJob(createdJobId ?? undefined, {
     poll: Boolean(createdJobId),
@@ -45,22 +49,22 @@ export function UploadPage() {
     }
 
     if (preview?.status === "completed") {
-      setStatusMessage("Your video made it all the way to a completed preview.");
+      setStatusMessage(publicCopy.upload.statusCompleted);
       return;
     }
 
     if (job?.status === "failed") {
-      setStatusMessage("This upload needs a hidden review check before it can keep going.");
+      setStatusMessage("This run needs an operator pass before the final preview can recover.");
       return;
     }
 
     if (job?.current_stage === "slot_selection" || job?.current_stage === "line_review") {
-      setStatusMessage("Your upload is ready for the hidden review screen if you want to keep iterating.");
+      setStatusMessage("Your clip is ready for studio review if you want to keep polishing the result.");
       return;
     }
 
     if (createdJobId) {
-      setStatusMessage("Your upload is being processed now. You can stay here while it works.");
+      setStatusMessage(publicCopy.upload.statusQueued);
     }
   }, [createdJobId, job, preview]);
 
@@ -91,8 +95,11 @@ export function UploadPage() {
       const campaign = await createCampaign(formData);
       setCreatedJobId(campaign.job_id);
       await startAnalysis(campaign.job_id);
-      setStatusMessage("Upload complete. Analysis started automatically.");
+      setStatusMessage("Upload complete. Scene analysis started automatically.");
       setFormState(initialFormState);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
     } catch (reason) {
       if (reason instanceof ApiError) {
         setError(reason.message);
@@ -104,38 +111,56 @@ export function UploadPage() {
     }
   }
 
+  function assignFile(file: File | null) {
+    setFormState((current) => ({ ...current, videoFile: file }));
+    setDragging(false);
+    setError(null);
+  }
+
+  function handleFileSelection(event: ChangeEvent<HTMLInputElement>) {
+    assignFile(event.target.files?.[0] ?? null);
+  }
+
+  function handleDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    const file = event.dataTransfer.files?.[0] ?? null;
+    assignFile(file);
+  }
+
   function resetFlow() {
     setFormState(initialFormState);
     setSubmitting(false);
     setError(null);
     setCreatedJobId(null);
     setStatusMessage(null);
+    setDragging(false);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   }
 
   const shouldShowProgressState = Boolean(createdJobId);
 
   return (
     <div className="public-page public-page--upload">
-      <section className="upload-card">
+      <section className="upload-card voxel-panel">
+        <FloatingDecor ids={["cloud", "bow", "flower"]} variant="upload" />
+
         <div className="upload-card__intro">
-          <span className="showcase-pill showcase-pill--pink">
+          <span className="voxel-chip">
             <UploadIcon className="inline-icon" />
-            Upload a new video
+            {publicCopy.upload.eyebrow}
           </span>
-          <h1>Drop in a clip and let the pipeline start working right away.</h1>
-          <p>
-            Just give it a name, add the brand, and upload the video. Everything else stays behind the curtain unless
-            you want the hidden review screen.
-          </p>
+          <h1>{publicCopy.upload.title}</h1>
+          <p>{publicCopy.upload.lede}</p>
+
           <div className="upload-card__chips">
-            <span>
-              <SparkleIcon className="inline-icon" />
-              One-step flow
-            </span>
-            <span>
-              <HeartIcon className="inline-icon" />
-              Cute public UI
-            </span>
+            {publicCopy.upload.chips.map((chip, index) => (
+              <span key={chip}>
+                {index === 0 ? <SparkleIcon className="inline-icon" /> : <HeartIcon className="inline-icon" />}
+                {chip}
+              </span>
+            ))}
           </div>
         </div>
 
@@ -146,7 +171,7 @@ export function UploadPage() {
               <input
                 value={formState.campaignName}
                 onChange={(event) => setFormState((current) => ({ ...current, campaignName: event.target.value }))}
-                placeholder="Spring soda moment"
+                placeholder="Cherry pixel dream"
                 required
               />
             </label>
@@ -161,24 +186,71 @@ export function UploadPage() {
               />
             </label>
 
-            <label className="cute-field">
-              <span>Source video</span>
+            <div
+              className={`upload-dropzone${dragging ? " upload-dropzone--dragging" : ""}${formState.videoFile ? " upload-dropzone--has-file" : ""}`}
+              onDragEnter={(event) => {
+                event.preventDefault();
+                setDragging(true);
+              }}
+              onDragLeave={(event) => {
+                event.preventDefault();
+                setDragging(false);
+              }}
+              onDragOver={(event) => {
+                event.preventDefault();
+                setDragging(true);
+              }}
+              onDrop={handleDrop}
+            >
               <input
+                ref={fileInputRef}
+                aria-label={publicCopy.upload.dropzoneTitle}
+                className="upload-dropzone__input"
                 type="file"
                 accept=".mp4,video/mp4"
-                onChange={(event) =>
-                  setFormState((current) => ({ ...current, videoFile: event.target.files?.[0] ?? null }))
-                }
-                required
+                onChange={handleFileSelection}
               />
-            </label>
+
+              <div className="upload-dropzone__content">
+                <span className="voxel-chip voxel-chip--soft">{publicCopy.upload.dropzoneTitle}</span>
+                <strong>{publicCopy.upload.dropzoneHint}</strong>
+                <p>{publicCopy.upload.dropzoneSubhint}</p>
+
+                <div className="upload-dropzone__actions">
+                  <button
+                    className="cute-button cute-button--secondary"
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    Browse files
+                  </button>
+                  {formState.videoFile ? (
+                    <button className="cute-button cute-button--secondary" type="button" onClick={() => assignFile(null)}>
+                      {publicCopy.upload.resetLabel}
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+
+              {formState.videoFile ? (
+                <div className="upload-dropzone__file">
+                  <span>{publicCopy.upload.selectedFileLabel}</span>
+                  <strong>{formState.videoFile.name}</strong>
+                  <small>{formatFileSize(formState.videoFile.size)}</small>
+                </div>
+              ) : null}
+            </div>
 
             <div className="upload-form__actions">
               <button type="submit" className="cute-button" disabled={submitting}>
-                {submitting ? "Uploading..." : "Start processing"}
+                {submitting ? "Uploading..." : publicCopy.upload.primaryCta}
               </button>
+              <Link className="cute-button cute-button--secondary" to="/products">
+                <HeartIcon className="inline-icon" />
+                {publicCopy.upload.productCta}
+              </Link>
               <Link className="cute-link" to="/">
-                Back to showcase
+                {publicCopy.upload.secondaryCta}
               </Link>
             </div>
           </form>
@@ -189,7 +261,7 @@ export function UploadPage() {
                 <span className={`status-pill status-pill--${statusTone(job?.status, preview?.status)}`}>
                   {preview?.status === "completed" ? "completed" : job?.status ?? "queued"}
                 </span>
-                <h2>Upload status</h2>
+                <h2>{publicCopy.upload.statusTitle}</h2>
               </div>
               <button type="button" className="cute-button cute-button--secondary" onClick={resetFlow}>
                 Upload another video
@@ -216,17 +288,17 @@ export function UploadPage() {
             {error ? <p className="form-message form-message--error">{error}</p> : null}
             {jobError ? <p className="form-message form-message--error">{jobError}</p> : null}
             {previewError ? <p className="form-message form-message--error">{previewError}</p> : null}
-            {jobLoading ? <p className="muted">Refreshing status...</p> : null}
+            {jobLoading ? <p className="muted">Refreshing pipeline status...</p> : null}
 
             <div className="upload-status-card__actions">
               {createdJobId ? (
                 <Link className="cute-link" to={`/jobs/${createdJobId}`}>
-                  Open hidden review screen
+                  {publicCopy.upload.reviewLink}
                 </Link>
               ) : null}
               {createdJobId && preview?.status === "completed" ? (
                 <Link className="cute-link" to={`/jobs/${createdJobId}/preview`}>
-                  Open hidden preview page
+                  {publicCopy.upload.previewLink}
                 </Link>
               ) : null}
               {previewDownloadUrl ? (
@@ -247,50 +319,56 @@ export function UploadPage() {
 
 function buildFriendlyStatus(jobStatus?: string, currentStage?: string, previewStatus?: string) {
   if (previewStatus === "completed") {
-    return "Your preview is ready.";
+    return publicCopy.upload.statusCompleted;
   }
 
   if (jobStatus === "failed") {
-    return "Something went wrong and this upload needs a hidden review check.";
+    return "Something slipped during processing, so this clip needs a quick studio pass.";
   }
 
   if (currentStage === "ready_for_analysis") {
-    return "Upload is ready. Analysis is about to start.";
+    return "The upload is set. Scene analysis is about to start.";
   }
 
   if (currentStage === "analysis_submission" || currentStage === "analysis_poll") {
-    return "We are scanning the scene to find a sweet spot for the branded moment.";
+    return "CAFAI is reading the scene and looking for a believable insert window.";
   }
 
   if (currentStage === "slot_selection") {
-    return "The system found candidate moments. This is the point where the hidden review screen can step in.";
+    return "The insert candidates are ready for studio review.";
   }
 
   if (currentStage === "line_review") {
-    return "The line review step is waiting in the hidden review screen.";
+    return "The product line is being polished before generation.";
   }
 
-  if (currentStage === "generation_submission" || currentStage === "generation_poll") {
-    return "The inserted moment is being generated now.";
+  if (jobStatus === "generating") {
+    return "The branded bridge clip is generating now.";
   }
 
-  if (currentStage === "render_poll" || previewStatus === "stitching" || previewStatus === "pending") {
+  if (jobStatus === "stitching" || previewStatus === "stitching") {
     return "The final preview is being stitched together.";
   }
 
-  if (jobStatus === "queued") {
-    return "Your upload is queued up and ready to move.";
-  }
-
-  return "Your upload is on its way through the pipeline.";
+  return "Your upload is queued and waiting for the next pipeline step.";
 }
 
 function statusTone(jobStatus?: string, previewStatus?: string) {
   if (previewStatus === "completed") {
     return "success";
   }
-  if (jobStatus === "failed") {
+
+  if (jobStatus === "failed" || previewStatus === "failed") {
     return "error";
   }
+
   return "progress";
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024 * 1024) {
+    return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  }
+
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { UploadPage } from "./pages/UploadPage";
@@ -13,7 +13,7 @@ describe("UploadPage", () => {
     vi.unstubAllGlobals();
   });
 
-  it("uploads a video, auto-starts analysis, and shows the compact progress state", async () => {
+  it("uploads a video, auto-starts analysis, and shows the studio-ready progress state", async () => {
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
 
@@ -24,7 +24,7 @@ describe("UploadPage", () => {
             campaign_id: "camp_1",
             job_id: "job_1",
             product_id: "prod_inline",
-            name: "Spring soda moment",
+            name: "Cherry pixel dream",
             status: "queued",
             current_stage: "ready_for_analysis",
             video_filename: "clip.mp4",
@@ -90,16 +90,18 @@ describe("UploadPage", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.change(screen.getByLabelText("Campaign name"), { target: { value: "Spring soda moment" } });
+    fireEvent.change(screen.getByLabelText("Campaign name"), { target: { value: "Cherry pixel dream" } });
     fireEvent.change(screen.getByLabelText("Brand / Product name"), { target: { value: "Cherry Pop" } });
     fireEvent.change(screen.getByLabelText("Source video"), {
       target: { files: [new File(["video"], "clip.mp4", { type: "video/mp4" })] },
     });
 
-    fireEvent.submit(screen.getByRole("button", { name: "Start processing" }).closest("form") as HTMLFormElement);
+    expect(screen.getByText("clip.mp4")).toBeInTheDocument();
 
-    await screen.findByText("Upload status");
-    expect(screen.getByText("Open hidden review screen")).toBeInTheDocument();
+    fireEvent.submit(screen.getByRole("button", { name: "Start the pretty pipeline" }).closest("form") as HTMLFormElement);
+
+    await screen.findByText("Pipeline status");
+    expect(screen.getByText("Open studio review")).toBeInTheDocument();
     expect(screen.getByText("slot_selection")).toBeInTheDocument();
     expect(screen.getByText("42%")).toBeInTheDocument();
 

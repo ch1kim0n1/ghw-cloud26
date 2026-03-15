@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72" role="img" aria-label="Voxel star">
+  <rect width="72" height="72" fill="#000000" opacity="0" />
+  <rect x="32" y="8" width="8" height="16" fill="#ffe98e" />
+  <rect x="16" y="24" width="16" height="8" fill="#ffe98e" />
+  <rect x="32" y="24" width="8" height="8" fill="#fff5b0" />
+  <rect x="40" y="24" width="16" height="8" fill="#ffe98e" />
+  <rect x="24" y="32" width="24" height="8" fill="#ffe98e" />
+  <rect x="16" y="40" width="16" height="8" fill="#ffd86e" />
+  <rect x="32" y="40" width="8" height="16" fill="#ffd86e" />
+  <rect x="40" y="40" width="16" height="8" fill="#ffd86e" />
+</svg>

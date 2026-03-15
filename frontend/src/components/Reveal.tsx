@@ -19,8 +19,7 @@ export function Reveal({ children, className, delay = 0, as = "div" }: RevealPro
     <Component
       className={className}
       initial={{ opacity: 0, y: 24 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, amount: 0.18 }}
+      animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.65, ease: [0.22, 1, 0.36, 1], delay }}
     >
       {children}
@@ -44,8 +43,7 @@ export function StaggerList({ className, children }: StaggerListProps) {
     <motion.div
       className={className}
       initial="hidden"
-      whileInView="show"
-      viewport={{ once: true, amount: 0.12 }}
+      animate="show"
       variants={{
         hidden: {},
         show: {

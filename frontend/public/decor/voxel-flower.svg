@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 96" role="img" aria-label="Voxel flower">
+  <rect width="80" height="96" fill="#000000" opacity="0" />
+  <rect x="24" y="8" width="16" height="16" fill="#ff8fca" />
+  <rect x="40" y="24" width="16" height="16" fill="#ff7ab4" />
+  <rect x="24" y="40" width="16" height="16" fill="#ff8fca" />
+  <rect x="8" y="24" width="16" height="16" fill="#ff9fd4" />
+  <rect x="24" y="24" width="16" height="16" fill="#ffe183" />
+  <rect x="24" y="56" width="8" height="16" fill="#7dcf73" />
+  <rect x="32" y="72" width="8" height="16" fill="#68b75f" />
+  <rect x="16" y="72" width="16" height="8" fill="#95dd88" />
+  <rect x="40" y="80" width="16" height="8" fill="#95dd88" />
+</svg>

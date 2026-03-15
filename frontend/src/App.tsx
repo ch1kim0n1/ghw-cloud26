@@ -1,6 +1,7 @@
 import { NavLink, Route, Routes } from "react-router-dom";
 import { BrandMark } from "./components/BrandMark";
 import { HeartIcon, PlayIcon, UploadIcon, UsersIcon } from "./components/PinkIcons";
+import { publicCopy } from "./content/publicCopy";
 import { AboutPage } from "./pages/AboutPage";
 import { CreateCampaignPage } from "./pages/CreateCampaignPage";
 import { HomePage } from "./pages/HomePage";
@@ -14,42 +15,47 @@ function App() {
   const navClassName = ({ isActive }: { isActive: boolean }) => (isActive ? "active" : undefined);
 
   return (
-    <div className="app-shell app-shell--cute">
-      <header className="app-header app-header--cute">
-        <NavLink className="brand-lockup brand-lockup--cute" to="/">
+    <div className="app-shell app-shell--voxel">
+      <header className="app-header app-header--voxel">
+        <NavLink className="brand-lockup brand-lockup--voxel" to="/">
           <BrandMark />
           <span className="brand-lockup__text">
-            <strong>PinkFrame</strong>
-            <small>scene-aware ad magic</small>
+            <strong>{publicCopy.brand.name}</strong>
+            <small>{publicCopy.brand.tagline}</small>
           </span>
         </NavLink>
 
         <nav className="tab-nav" aria-label="Primary">
           <NavLink className={navClassName} to="/" end>
+            <HeartIcon className="tab-nav__icon" />
+            {publicCopy.nav.home}
+          </NavLink>
+          <NavLink className={navClassName} to="/gallery">
             <PlayIcon className="tab-nav__icon" />
-            Showcase
+            {publicCopy.nav.gallery}
           </NavLink>
           <NavLink className={navClassName} to="/upload">
             <UploadIcon className="tab-nav__icon" />
-            Upload
+            {publicCopy.nav.upload}
+          </NavLink>
+          <NavLink className={navClassName} to="/about">
+            <UsersIcon className="tab-nav__icon" />
+            {publicCopy.nav.about}
           </NavLink>
         </nav>
 
         <div className="header-actions">
-          <NavLink className={navClassName} to="/about">
-            <UsersIcon className="tab-nav__icon" />
-            About us
-          </NavLink>
           <span className="header-badge">
             <HeartIcon className="tab-nav__icon" />
-            girl-coded
+            {publicCopy.brand.badge}
           </span>
         </div>
       </header>
 
-      <main className="app-main app-main--cute">
+      <main className="app-main app-main--voxel">
         <Routes>
           <Route path="/" element={<HomePage />} />
+          <Route path="/gallery" element={<ResultsPage />} />
           <Route path="/upload" element={<UploadPage />} />
           <Route path="/about" element={<AboutPage />} />
           <Route path="/results" element={<ResultsPage />} />

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 64" role="img" aria-label="Voxel heart">
+  <rect width="72" height="64" fill="#000000" opacity="0" />
+  <rect x="8" y="8" width="16" height="16" fill="#ff5c9b" />
+  <rect x="24" y="8" width="16" height="16" fill="#ff77ae" />
+  <rect x="40" y="8" width="16" height="16" fill="#ff77ae" />
+  <rect x="56" y="8" width="8" height="16" fill="#ff5c9b" />
+  <rect x="8" y="24" width="56" height="16" fill="#ff4f92" />
+  <rect x="16" y="40" width="40" height="8" fill="#ef3f84" />
+  <rect x="24" y="48" width="24" height="8" fill="#c8386b" />
+</svg>

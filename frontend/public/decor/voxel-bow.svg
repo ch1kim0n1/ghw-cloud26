@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 64" role="img" aria-label="Voxel bow">
+  <rect width="96" height="64" fill="#000000" opacity="0" />
+  <rect x="16" y="16" width="16" height="16" fill="#ff8dbf" />
+  <rect x="32" y="8" width="16" height="16" fill="#ff9ecb" />
+  <rect x="32" y="24" width="16" height="16" fill="#ff7bad" />
+  <rect x="48" y="24" width="16" height="16" fill="#ffd2e6" />
+  <rect x="64" y="8" width="16" height="16" fill="#ff9ecb" />
+  <rect x="64" y="24" width="16" height="16" fill="#ff8dbf" />
+  <rect x="40" y="24" width="16" height="16" fill="#ff5f96" />
+  <rect x="40" y="40" width="16" height="8" fill="#c74472" />
+</svg>

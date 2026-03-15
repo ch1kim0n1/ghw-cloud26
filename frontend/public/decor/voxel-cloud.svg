@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 80" role="img" aria-label="Voxel cloud">
+  <rect width="128" height="80" fill="#000000" opacity="0" />
+  <rect x="16" y="32" width="16" height="16" fill="#ffffff" />
+  <rect x="32" y="16" width="16" height="16" fill="#fff8ff" />
+  <rect x="48" y="16" width="16" height="16" fill="#fff8ff" />
+  <rect x="64" y="8" width="16" height="16" fill="#fff8ff" />
+  <rect x="80" y="16" width="16" height="16" fill="#fff8ff" />
+  <rect x="96" y="24" width="16" height="16" fill="#fff8ff" />
+  <rect x="32" y="32" width="16" height="16" fill="#ffe6f3" />
+  <rect x="48" y="32" width="16" height="16" fill="#ffffff" />
+  <rect x="64" y="24" width="16" height="16" fill="#ffffff" />
+  <rect x="80" y="32" width="16" height="16" fill="#ffffff" />
+  <rect x="96" y="32" width="16" height="16" fill="#ffe6f3" />
+  <rect x="48" y="48" width="16" height="16" fill="#ffd9eb" />
+  <rect x="64" y="48" width="16" height="16" fill="#ffd9eb" />
+  <rect x="80" y="48" width="16" height="16" fill="#ffd9eb" />
+</svg>

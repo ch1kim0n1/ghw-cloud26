@@ -4,7 +4,7 @@ export function BrandMark() {
       className="brand-lockup__mark"
       viewBox="0 0 48 48"
       role="img"
-      aria-label="PinkFrame logo"
+      aria-label="CAFAI logo"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
     >

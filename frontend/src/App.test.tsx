@@ -1,14 +1,17 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 
 describe("App", () => {
   beforeEach(() => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ products: [] }),
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ products: [] }),
+      }),
+    );
   });
 
   afterEach(() => {
@@ -16,25 +19,39 @@ describe("App", () => {
     vi.unstubAllGlobals();
   });
 
-  it("renders the simplified showcase route with only two visible tabs", () => {
+  it("renders the landing route with the voxel nav, hero, proof rail, and upload cta", () => {
     render(
       <MemoryRouter initialEntries={["/"]}>
         <App />
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole("link", { name: "Showcase" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Home" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Gallery" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Upload" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "About us" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "About" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Results" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Studio dashboard" })).not.toBeInTheDocument();
-    expect(screen.getByText("Ad insertion, but make it cute, seamless, and actually watchable.")).toBeInTheDocument();
-    expect(screen.getByText("Outdoor reveal with a late-scene handoff")).toBeInTheDocument();
-    expect(screen.getByText("Talking-head scene with a seamless branded bridge")).toBeInTheDocument();
-    expect(screen.getByText("Streamer close-up with an early energy-drink insert")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "CAFAI turns product insertion into a scene-aware, watchable cut." })).toBeInTheDocument();
+    expect(screen.getByText("One featured scene. Four receipts right under it.")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Final stitched idol cut/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Start an upload" })).toBeInTheDocument();
   });
 
-  it("renders the upload route with the simplified fields", () => {
+  it("switches the featured hero example from the demo selector", () => {
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    const demoSelector = screen.getByRole("tablist", { name: "Featured demo selector" });
+    fireEvent.click(within(demoSelector).getByRole("tab", { name: /Bike Bloom/i }));
+
+    expect(screen.getAllByRole("heading", { name: "Bike Bloom Reveal" })[0]).toBeInTheDocument();
+    expect(screen.getByText("41.708s -> 43.377s")).toBeInTheDocument();
+  });
+
+  it("renders the upload route with the custom dropzone", () => {
     render(
       <MemoryRouter initialEntries={["/upload"]}>
         <App />
@@ -44,6 +61,8 @@ describe("App", () => {
     expect(screen.getByLabelText("Campaign name")).toBeInTheDocument();
     expect(screen.getByLabelText("Brand / Product name")).toBeInTheDocument();
     expect(screen.getByLabelText("Source video")).toBeInTheDocument();
+    expect(screen.getByText("Drag an MP4 here or tap to browse.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Upload a product" })).toBeInTheDocument();
     expect(screen.queryByText("Product source")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Source URL")).not.toBeInTheDocument();
   });
@@ -55,19 +74,26 @@ describe("App", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText("Ad insertion, but make it cute, seamless, and actually watchable.")).toBeInTheDocument();
+    expect(screen.getByText("Gallery of processed videos")).toBeInTheDocument();
+    expect(screen.getByRole("tablist", { name: "Showcase examples" })).toBeInTheDocument();
   });
 
-  it("renders the about route with developer placeholders", () => {
+  it("renders the about route with the upgraded founder cards", () => {
     render(
       <MemoryRouter initialEntries={["/about"]}>
         <App />
       </MemoryRouter>,
     );
 
-    expect(screen.getByText("Two builders, one cute little ad-insertion experiment.")).toBeInTheDocument();
-    expect(screen.getByText("Developer One")).toBeInTheDocument();
-    expect(screen.getByText("Developer Two")).toBeInTheDocument();
+    expect(screen.getByText("The two developers behind the CAFAI demo.")).toBeInTheDocument();
+    expect(screen.getByText("Vlad")).toBeInTheDocument();
+    expect(screen.getByText("Monika Jaqeli")).toBeInTheDocument();
+    expect(screen.getByAltText("Vlad profile meme")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Vlad GitHub profile" })).toHaveAttribute("href", "https://github.com/ch1kim0n1");
+    expect(screen.getByRole("link", { name: "Monika Jaqeli GitHub profile" })).toHaveAttribute(
+      "href",
+      "https://github.com/SuperLepeshka",
+    );
   });
 
   it("keeps the hidden products route accessible", async () => {
