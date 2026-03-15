@@ -57,12 +57,31 @@ export const demoExamples: DemoExample[] = [
     startFrame: "/demo/start-frame.png",
     stopFrame: "/demo/stop-frame.png",
   },
+  {
+    id: "example3",
+    label: "Example 03",
+    title: "Streamer close-up with an early energy-drink insert",
+    summary: "An anime desk scene where the branded drink moment lands right after the opening beat without dropping the character-focused framing.",
+    scene: "Streamer desk close-up",
+    jobId: "job_592fecd7-ff36-4beb-acba-170ce0f16107",
+    sourceDurationSeconds: 82.199,
+    insertStartSeconds: 7.9,
+    insertedDurationSeconds: 7.042,
+    previewDurationSeconds: 88.507,
+    anchorFrames: "237 -> 259",
+    selectedWindow: "7.9s -> 8.633s",
+    finalVideo: "/demo/example3-final.mp4",
+    finalPoster: "/demo/example3-final-poster.png",
+    generatedPreview: "/demo/example3-generated.gif",
+    startFrame: "/demo/example3-start-frame.png",
+    stopFrame: "/demo/example3-stop-frame.png",
+  },
 ];
 
-export const latestDemoExample = demoExamples[1];
+export const latestDemoExample = demoExamples.find((example) => example.id === "example2") ?? demoExamples[demoExamples.length - 1];
 
 export const heroStats = [
-  { value: "2", label: "completed demo cuts" },
+  { value: String(demoExamples.length), label: "completed demo cuts" },
   { value: "1", label: "scene-aware insert per example" },
   { value: "under 10s", label: "to understand the value" },
 ];

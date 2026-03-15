@@ -31,6 +31,7 @@ describe("App", () => {
     expect(screen.getByText("Ad insertion, but make it cute, seamless, and actually watchable.")).toBeInTheDocument();
     expect(screen.getByText("Outdoor reveal with a late-scene handoff")).toBeInTheDocument();
     expect(screen.getByText("Talking-head scene with a seamless branded bridge")).toBeInTheDocument();
+    expect(screen.getByText("Streamer close-up with an early energy-drink insert")).toBeInTheDocument();
   });
 
   it("renders the upload route with the simplified fields", () => {
