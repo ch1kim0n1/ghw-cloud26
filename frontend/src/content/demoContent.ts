@@ -1,3 +1,5 @@
+import { assetUrl } from "../utils/assetUrl";
+
 export type DemoExample = {
   id: string;
   featured: boolean;
@@ -55,11 +57,11 @@ export const demoExamples: DemoExample[] = [
     previewDurationSeconds: 64.498,
     anchorFrames: "1250 -> 1300",
     selectedWindow: "41.708s -> 43.377s",
-    finalVideo: "/demo/example1-final.mp4",
-    finalPoster: "/demo/example1-final-poster.png",
-    generatedPreview: "/demo/example1-generated.gif",
-    startFrame: "/demo/example1-start-frame.png",
-    stopFrame: "/demo/example1-stop-frame.png",
+    finalVideo: assetUrl("demo/example1-final.mp4"),
+    finalPoster: assetUrl("demo/example1-final-poster.png"),
+    generatedPreview: assetUrl("demo/example1-generated.gif"),
+    startFrame: assetUrl("demo/example1-start-frame.png"),
+    stopFrame: assetUrl("demo/example1-stop-frame.png"),
     proofLabels: {
       original: "Original scene beat",
       window: "Late insert window",
@@ -94,11 +96,11 @@ export const demoExamples: DemoExample[] = [
     previewDurationSeconds: 65.537,
     anchorFrames: "615 -> 630",
     selectedWindow: "20.5s -> 21.0s",
-    finalVideo: "/demo/example2-final.mp4",
-    finalPoster: "/demo/example2-final-poster.png",
-    generatedPreview: "/demo/example2-generated.gif",
-    startFrame: "/demo/start-frame.png",
-    stopFrame: "/demo/stop-frame.png",
+    finalVideo: assetUrl("demo/example2-final.mp4"),
+    finalPoster: assetUrl("demo/example2-final-poster.png"),
+    generatedPreview: assetUrl("demo/example2-generated.gif"),
+    startFrame: assetUrl("demo/start-frame.png"),
+    stopFrame: assetUrl("demo/stop-frame.png"),
     proofLabels: {
       original: "Original desk beat",
       window: "Mid-scene insert window",
@@ -134,11 +136,11 @@ export const demoExamples: DemoExample[] = [
     previewDurationSeconds: 88.507,
     anchorFrames: "237 -> 259",
     selectedWindow: "7.9s -> 8.633s",
-    finalVideo: "/demo/example3-final.mp4",
-    finalPoster: "/demo/example3-final-poster.png",
-    generatedPreview: "/demo/example3-generated.gif",
-    startFrame: "/demo/example3-start-frame.png",
-    stopFrame: "/demo/example3-stop-frame.png",
+    finalVideo: assetUrl("demo/example3-final.mp4"),
+    finalPoster: assetUrl("demo/example3-final-poster.png"),
+    generatedPreview: assetUrl("demo/example3-generated.gif"),
+    startFrame: assetUrl("demo/example3-start-frame.png"),
+    stopFrame: assetUrl("demo/example3-stop-frame.png"),
     proofLabels: {
       original: "Original opening beat",
       window: "Early insert window",

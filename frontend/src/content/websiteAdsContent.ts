@@ -1,3 +1,5 @@
+import { assetUrl } from "../utils/assetUrl";
+
 export const websiteAdsContent = {
   chips: ["Stable Diffusion backend", "Banner + vertical output", "Saved locally in the main demo"],
   examples: [
@@ -6,7 +8,7 @@ export const websiteAdsContent = {
       label: "Example 1",
       title: "Julius Caesar reference article",
       url: "https://www.britannica.com/biography/Julius-Caesar-Roman-ruler",
-      previewImage: "/website-ads/example1/injected-preview.png",
+      previewImage: assetUrl("website-ads/example1/injected-preview.png"),
       note: "Captured article page with both placements moved into the empty media block so the article copy stays untouched.",
       preview: {
         publication: "History Weekly",
@@ -27,7 +29,7 @@ export const websiteAdsContent = {
       label: "Example 2",
       title: "Ted Turner reference article",
       url: "https://www.forbes.com/profile/ted-turner/",
-      previewImage: "/website-ads/example2/injected-preview.png",
+      previewImage: assetUrl("website-ads/example2/injected-preview.png"),
       note: "Captured Forbes profile page with a masthead banner in the top whitespace and the vertical unit moved into the right-side empty rail.",
       preview: {
         publication: "Business Ledger",
@@ -48,7 +50,7 @@ export const websiteAdsContent = {
       label: "Example 3",
       title: "Demon Slayer cultural landscapes reference article",
       url: "https://www.asianstudies.org/publications/eaa/archives/teaching-cultural-historical-and-religious-landscapes-with-the-anime-demon-slayer/",
-      previewImage: "/website-ads/example3/injected-preview.png",
+      previewImage: assetUrl("website-ads/example3/injected-preview.png"),
       note: "Fresh capture of the article page with the banner placed in the site chrome and the vertical unit placed in unused sidebar space.",
       preview: {
         publication: "Culture Review",

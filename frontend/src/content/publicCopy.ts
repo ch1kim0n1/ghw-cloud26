@@ -1,3 +1,5 @@
+import { assetUrl } from "../utils/assetUrl";
+
 export const publicCopy = {
   brand: {
     name: "CAFAI",
@@ -86,7 +88,7 @@ export const publicCopy = {
         name: "Vlad",
         role: "Did everything except frontend and design choices.",
         bio: "Built the heavy-lifting parts of the project and carried the full technical backbone behind the demo.",
-        avatar: "/about/vlad-tired-cat.jpg",
+        avatar: assetUrl("about/vlad-tired-cat.jpg"),
         github: "https://github.com/ch1kim0n1",
         githubLabel: "@ch1kim0n1",
       },
@@ -95,7 +97,7 @@ export const publicCopy = {
         role: "Design, frontend, picked videos for demo, was here for the vibes and Vlad's moral support.",
         bio:
           "Shaped the visual direction, handled the frontend presentation, chose the demo footage, and kept the project energy exactly where it needed to be.",
-        avatar: "/about/monika-meme.jpg",
+        avatar: assetUrl("about/monika-meme.jpg"),
         github: "https://github.com/SuperLepeshka",
         githubLabel: "@SuperLepeshka",
       },
