@@ -1,4 +1,5 @@
 import { animated, useSprings } from "@react-spring/web";
+import { useReducedMotion } from "framer-motion";
 
 const decorAssets = {
   bow: "/decor/voxel-bow.svg",
@@ -17,25 +18,30 @@ type FloatingDecorProps = {
 
 export function FloatingDecor({ ids, variant = "hero" }: FloatingDecorProps) {
   const safeIds = ids.filter((id): id is DecorAssetId => id in decorAssets);
+  const reducedMotion = useReducedMotion();
   const springs = useSprings(
     safeIds.length,
     safeIds.map((id, index) => ({
       from: {
         opacity: 0,
-        transform: `translate3d(0, 16px, 0) rotate(${index % 2 === 0 ? -4 : 4}deg) scale(0.92)`,
+        transform: `translate3d(0, 14px, 0) rotate(${index % 2 === 0 ? -3 : 3}deg) scale(0.94)`,
       },
       to: {
         opacity: 1,
-        transform: `translate3d(0, ${index % 2 === 0 ? -8 : 6}px, 0) rotate(${index % 2 === 0 ? 3 : -3}deg) scale(1)`,
+        transform: reducedMotion
+          ? "translate3d(0, 0, 0) rotate(0deg) scale(1)"
+          : `translate3d(0, ${index % 2 === 0 ? -5 : 4}px, 0) rotate(${index % 2 === 0 ? 2 : -2}deg) scale(1)`,
       },
-      loop: {
-        reverse: true,
-      },
+      loop: reducedMotion
+        ? false
+        : {
+            reverse: true,
+          },
       delay: 180 + index * 140,
       config: {
-        mass: 1.4,
-        tension: 105 + index * 6,
-        friction: 18,
+        mass: 1.55,
+        tension: 88 + index * 4,
+        friction: 20,
       },
     })),
   );

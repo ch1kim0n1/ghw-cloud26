@@ -14,7 +14,7 @@ export function WebsiteAdsShowcase({
   title = "Injected website ad placements on real captured pages",
   lede = "These examples show the static-ad side of the product: banner and vertical units composited onto real page captures so the site can demonstrate both channels together.",
 }: WebsiteAdsShowcaseProps) {
-  const [activeExampleId, setActiveExampleId] = useState(websiteAdsContent.examples[0]?.id ?? "");
+  const [activeExampleId, setActiveExampleId] = useState<string>(websiteAdsContent.examples[0]?.id ?? "");
   const reducedMotion = useReducedMotion();
   const activeExample = useMemo(
     () => websiteAdsContent.examples.find((example) => example.id === activeExampleId) ?? websiteAdsContent.examples[0],

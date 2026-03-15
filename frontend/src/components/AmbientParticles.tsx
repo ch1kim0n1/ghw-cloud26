@@ -1,12 +1,14 @@
 import Particles, { initParticlesEngine } from "@tsparticles/react";
 import { loadSlim } from "@tsparticles/slim";
+import { useReducedMotion } from "framer-motion";
 import { useEffect, useState } from "react";
 
 export function AmbientParticles() {
   const [ready, setReady] = useState(false);
+  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
-    if (import.meta.env.MODE === "test") {
+    if (import.meta.env.MODE === "test" || reducedMotion) {
       return;
     }
 
@@ -23,9 +25,9 @@ export function AmbientParticles() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [reducedMotion]);
 
-  if (!ready || import.meta.env.MODE === "test") {
+  if (!ready || import.meta.env.MODE === "test" || reducedMotion) {
     return null;
   }
 
@@ -44,7 +46,7 @@ export function AmbientParticles() {
         fpsLimit: 60,
         particles: {
           number: {
-            value: 26,
+            value: 18,
           },
           color: {
             value: ["#ff82b8", "#ffd8ec", "#fff7c0", "#ffffff"],
@@ -55,12 +57,12 @@ export function AmbientParticles() {
             outModes: {
               default: "out",
             },
-            speed: 0.6,
+            speed: 0.34,
           },
           opacity: {
             value: {
-              min: 0.2,
-              max: 0.65,
+              min: 0.16,
+              max: 0.48,
             },
           },
           rotate: {
@@ -79,7 +81,7 @@ export function AmbientParticles() {
           size: {
             value: {
               min: 3,
-              max: 8,
+              max: 6,
             },
           },
         },

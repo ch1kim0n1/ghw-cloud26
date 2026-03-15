@@ -470,9 +470,49 @@
   color: #8a6c4e;
 }
 
+.website-proof-switcher {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 18px;
+}
+
+.website-proof-switcher__button {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  padding: 16px;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 125, 183, 0.16);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 244, 249, 0.98));
+  box-shadow: 0 4px 0 rgba(141, 77, 104, 0.08);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.website-proof-switcher__button strong,
+.website-real-card__mini-copy strong,
+.website-real-card__story h4 {
+  display: block;
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.website-proof-switcher__button span,
+.website-real-card__mini-copy span {
+  color: var(--text-muted);
+  font-size: 0.86rem;
+}
+
+.website-proof-switcher__button.active {
+  transform: translateY(-1px);
+}
+
 .website-real-grid {
   display: grid;
-  gap: 24px;
+  gap: 16px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .website-real-card {
@@ -483,6 +523,22 @@
   border: 1px solid rgba(255, 125, 183, 0.14);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 246, 250, 0.98));
   box-shadow: var(--shadow-card);
+}
+
+.website-real-card__meta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.website-real-card__meta span {
+  padding: 7px 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 125, 183, 0.14);
+  background: rgba(255, 255, 255, 0.84);
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 700;
 }
 
 .website-real-card__header {
@@ -518,6 +574,44 @@
   display: block;
 }
 
+.website-real-card__story {
+  display: grid;
+  gap: 8px;
+}
+
+.website-real-card__story h4,
+.website-real-card__story p {
+  margin: 0;
+}
+
+.website-real-card__story p {
+  color: var(--text-secondary);
+}
+
+.website-real-card--mini {
+  padding: 0;
+  gap: 0;
+}
+
+.website-real-card--mini.active {
+  border-color: rgba(240, 79, 141, 0.24);
+}
+
+.website-real-card__mini-button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.website-real-card__mini-copy {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px 18px;
+}
+
 @media (max-width: 900px) {
   .website-ad-card__assets {
     grid-template-columns: 1fr;
@@ -538,6 +632,11 @@
 
   .website-real-card__header {
     flex-direction: column;
+  }
+
+  .website-proof-switcher,
+  .website-real-grid {
+    grid-template-columns: 1fr;
   }
 }
 

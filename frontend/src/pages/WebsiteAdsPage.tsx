@@ -1,12 +1,13 @@
+import { FloatingDecor } from "../components/FloatingDecor";
 import { Reveal } from "../components/Reveal";
 import { WebsiteAdsShowcase } from "../components/WebsiteAdsShowcase";
-import { websiteAdsContent } from "../content/websiteAdsContent";
 import { publicCopy } from "../content/publicCopy";
 
 export function WebsiteAdsPage() {
   return (
     <div className="studio-page">
       <Reveal as="section" className="website-ads-hero voxel-panel">
+        <FloatingDecor ids={["bow", "cloud", "star"]} variant="about" />
         <div className="section-heading section-heading--voxel">
           <p className="eyebrow">{publicCopy.websiteAds.eyebrow}</p>
           <h1>{publicCopy.websiteAds.title}</h1>

@@ -36,13 +36,13 @@ function App() {
     };
   }, [location.pathname]);
 
-  const navItems = [
+  const navItems: Array<{ to: string; label: string; icon: typeof HeartIcon; end?: boolean }> = [
     { to: "/", label: publicCopy.nav.home, icon: HeartIcon, end: true },
     { to: "/gallery", label: publicCopy.nav.gallery, icon: PlayIcon },
     { to: "/website-ads", label: publicCopy.nav.websiteAds, icon: SparkleIcon },
     { to: "/upload", label: publicCopy.nav.upload, icon: UploadIcon },
     { to: "/about", label: publicCopy.nav.about, icon: UsersIcon },
-  ] as const;
+  ];
 
   return (
     <div className="app-shell app-shell--voxel">
