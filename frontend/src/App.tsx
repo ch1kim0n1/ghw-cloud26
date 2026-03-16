@@ -13,6 +13,7 @@ import { JobPage } from "./pages/JobPage";
 import { PreviewPage } from "./pages/PreviewPage";
 import { ProductsPage } from "./pages/ProductsPage";
 import { ResultsPage } from "./pages/ResultsPage";
+import { StudioPage } from "./pages/StudioPage";
 import { UploadPage } from "./pages/UploadPage";
 import { WebsiteAdsPage } from "./pages/WebsiteAdsPage";
 
@@ -38,9 +39,9 @@ function App() {
 
   const navItems: Array<{ to: string; label: string; icon: typeof HeartIcon; end?: boolean }> = [
     { to: "/", label: publicCopy.nav.home, icon: HeartIcon, end: true },
-    { to: "/gallery", label: publicCopy.nav.gallery, icon: PlayIcon },
-    { to: "/website-ads", label: publicCopy.nav.websiteAds, icon: SparkleIcon },
     { to: "/upload", label: publicCopy.nav.upload, icon: UploadIcon },
+    { to: "/studio", label: publicCopy.nav.studio, icon: SparkleIcon },
+    { to: "/gallery", label: publicCopy.nav.gallery, icon: PlayIcon },
     { to: "/about", label: publicCopy.nav.about, icon: UsersIcon },
   ];
 
@@ -99,8 +100,9 @@ function App() {
           >
             <Routes location={location}>
               <Route path="/" element={<HomePage />} />
+              <Route path="/studio" element={<StudioPage />} />
               <Route path="/gallery" element={<ResultsPage />} />
-              <Route path="/results" element={<ResultsPage />} />
+              <Route path="/results" element={<Navigate to="/gallery" replace />} />
               <Route path="/website-ads" element={<WebsiteAdsPage />} />
               <Route path="/upload" element={<UploadPage />} />
               <Route path="/about" element={<AboutPage />} />

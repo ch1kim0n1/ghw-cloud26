@@ -15,9 +15,10 @@ export function WebsiteAdsPage() {
         </div>
 
         <div className="status-strip">
+          <span>experimental side lane</span>
           <span>3 injected screenshots</span>
           <span>real source pages</span>
-          <span>no mock article shells</span>
+          <span>not the core CAFAI MVP</span>
         </div>
       </Reveal>
 

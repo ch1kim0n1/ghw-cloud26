@@ -272,6 +272,85 @@ func TestWebsiteAdsAPI(t *testing.T) {
 	}
 }
 
+func TestWebsiteAdsAPIReturnsStableTimeoutEnvelope(t *testing.T) {
+	env := newAPIEnvWithWebsiteAdsClient(t, &fakeWebsiteAdsImageClient{
+		err: context.DeadlineExceeded,
+	})
+
+	product := insertProductFixture(t, env.database, "website ads timeout")
+
+	rec := env.serve(http.MethodPost, "/api/website-ads", []byte(fmt.Sprintf(`{
+		"product_id": %q,
+		"article_headline": "A very slow provider response",
+		"article_body": "This request should fail with a stable timeout envelope.",
+		"brand_style": "editorial"
+	}`, product.ID)), "application/json")
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var payload api.ErrorResponse
+	decodeJSON(t, rec.Body.Bytes(), &payload)
+	if payload.ErrorCode != constants.ErrorCodeGenerationFailed {
+		t.Fatalf("expected %s, got %q", constants.ErrorCodeGenerationFailed, payload.ErrorCode)
+	}
+	if !strings.Contains(payload.Error, "timed out") {
+		t.Fatalf("expected timeout message, got %q", payload.Error)
+	}
+}
+
+func TestJobsAPIListRecent(t *testing.T) {
+	env := newAPIEnv(t)
+	product := insertProductFixture(t, env.database, "jobs list product")
+	_, first := insertCampaignJobFixture(t, env.database, product.ID, "a")
+	_, second := insertCampaignJobFixture(t, env.database, product.ID, "b")
+
+	rec := env.serve(http.MethodGet, "/api/jobs", nil, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var payload struct {
+		Jobs []models.Job `json:"jobs"`
+	}
+	decodeJSON(t, rec.Body.Bytes(), &payload)
+	if len(payload.Jobs) < 2 {
+		t.Fatalf("expected at least 2 jobs, got %d", len(payload.Jobs))
+	}
+	if payload.Jobs[0].ID != second.ID {
+		t.Fatalf("expected newest job first, got %q", payload.Jobs[0].ID)
+	}
+	if payload.Jobs[1].ID != first.ID {
+		t.Fatalf("expected second job next, got %q", payload.Jobs[1].ID)
+	}
+}
+
+func TestJobsAPIListRecentLimitValidation(t *testing.T) {
+	env := newAPIEnv(t)
+	product := insertProductFixture(t, env.database, "jobs list limit")
+	for _, suffix := range []string{"a", "b", "c"} {
+		insertCampaignJobFixture(t, env.database, product.ID, suffix)
+	}
+
+	rec := env.serve(http.MethodGet, "/api/jobs?limit=2", nil, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var payload struct {
+		Jobs []models.Job `json:"jobs"`
+	}
+	decodeJSON(t, rec.Body.Bytes(), &payload)
+	if len(payload.Jobs) != 2 {
+		t.Fatalf("expected 2 jobs, got %d", len(payload.Jobs))
+	}
+
+	invalidRec := env.serve(http.MethodGet, "/api/jobs?limit=0", nil, "")
+	if invalidRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", invalidRec.Code, invalidRec.Body.String())
+	}
+}
+
 func TestCampaignsAPI(t *testing.T) {
 	requireMediaToolchain(t)
 	env := newAPIEnv(t)

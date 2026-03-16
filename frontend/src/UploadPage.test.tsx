@@ -98,7 +98,7 @@ describe("UploadPage", () => {
 
     expect(screen.getByText("clip.mp4")).toBeInTheDocument();
 
-    fireEvent.submit(screen.getByRole("button", { name: "Start the pretty pipeline" }).closest("form") as HTMLFormElement);
+    fireEvent.submit(screen.getByRole("button", { name: "Create video run" }).closest("form") as HTMLFormElement);
 
     await screen.findByText("Pipeline status");
     expect(screen.getByText("Open studio review")).toBeInTheDocument();

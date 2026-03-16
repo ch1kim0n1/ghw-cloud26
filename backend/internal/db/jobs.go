@@ -122,6 +122,50 @@ func (r *JobsRepository) ListByStatusAndStage(ctx context.Context, status, stage
 	return jobs, nil
 }
 
+func (r *JobsRepository) ListRecent(ctx context.Context, limit int) ([]models.Job, error) {
+	if limit <= 0 {
+		limit = 25
+	}
+
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT
+			id,
+			campaign_id,
+			status,
+			current_stage,
+			progress_percent,
+			selected_slot_id,
+			repick_count,
+			error_code,
+			error_message,
+			metadata_json,
+			created_at,
+			started_at,
+			completed_at
+		FROM jobs
+		ORDER BY datetime(created_at) DESC, id DESC
+		LIMIT ?
+	`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list recent jobs: %w", err)
+	}
+	defer rows.Close()
+
+	jobs := make([]models.Job, 0, limit)
+	for rows.Next() {
+		job, scanErr := scanJob(rows)
+		if scanErr != nil {
+			return nil, fmt.Errorf("scan recent job row: %w", scanErr)
+		}
+		jobs = append(jobs, job)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate recent jobs: %w", err)
+	}
+
+	return jobs, nil
+}
+
 func (r *JobsRepository) UpdateState(ctx context.Context, job models.Job) error {
 	metadataJSON, err := json.Marshal(job.Metadata)
 	if err != nil {

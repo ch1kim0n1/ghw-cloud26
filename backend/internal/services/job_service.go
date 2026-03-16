@@ -99,70 +99,6 @@ func (s *JobService) SetAuditLogger(auditLogger JobAuditLogger) *JobService {
 	return s
 }
 
-func (s *JobService) Get(ctx context.Context, jobID string) (models.Job, error) {
-	job, err := s.jobsRepository.GetByID(ctx, jobID)
-	if errors.Is(err, db.ErrNotFound) {
-		return models.Job{}, ResourceNotFound("job not found", map[string]any{
-			"job_id": jobID,
-		}, err)
-	}
-	if err != nil {
-		return models.Job{}, DatabaseFailure("failed to load job", map[string]any{
-			"job_id": jobID,
-		}, err)
-	}
-
-	return sanitizeJob(job), nil
-}
-
-func (s *JobService) ListLogs(ctx context.Context, jobID string) ([]models.JobLog, error) {
-	if _, err := s.jobsRepository.GetByID(ctx, jobID); err != nil {
-		if errors.Is(err, db.ErrNotFound) {
-			return nil, ResourceNotFound("job not found", map[string]any{
-				"job_id": jobID,
-			}, err)
-		}
-		return nil, DatabaseFailure("failed to load job", map[string]any{
-			"job_id": jobID,
-		}, err)
-	}
-
-	logs, err := s.jobLogsRepository.ListByJobID(ctx, jobID)
-	if err != nil {
-		return nil, DatabaseFailure("failed to load job logs", map[string]any{
-			"job_id": jobID,
-		}, err)
-	}
-	return logs, nil
-}
-
-func (s *JobService) GetPreview(ctx context.Context, jobID string) (models.Preview, error) {
-	if _, err := s.jobsRepository.GetByID(ctx, jobID); err != nil {
-		if errors.Is(err, db.ErrNotFound) {
-			return models.Preview{}, ResourceNotFound("job not found", map[string]any{
-				"job_id": jobID,
-			}, err)
-		}
-		return models.Preview{}, DatabaseFailure("failed to load job", map[string]any{
-			"job_id": jobID,
-		}, err)
-	}
-
-	preview, err := s.previewsRepository.GetByJobID(ctx, jobID)
-	if errors.Is(err, db.ErrNotFound) {
-		return models.Preview{}, ResourceNotFound("preview not found", map[string]any{
-			"job_id": jobID,
-		}, err)
-	}
-	if err != nil {
-		return models.Preview{}, DatabaseFailure("failed to load preview", map[string]any{
-			"job_id": jobID,
-		}, err)
-	}
-
-	return sanitizePreview(preview), nil
-}
-
 func (s *JobService) StartPreviewRender(ctx context.Context, jobID, slotID string) (models.Job, models.Preview, error) {
 	tx, err := s.database.BeginTx(ctx, nil)
 	if err != nil {
@@ -845,15 +781,15 @@ func (s *JobService) processAndAuditTransition(ctx context.Context, source strin
 	}
 
 	s.emitJobAudit("job_transitioned", after, "job transitioned in worker", models.Metadata{
-		"source":            source,
-		"previous_status":   before.Status,
-		"current_status":    after.Status,
-		"previous_stage":    before.CurrentStage,
-		"current_stage":     after.CurrentStage,
-		"previous_error":    beforeErrorCode,
-		"current_error":     afterErrorCode,
-		"progress_percent":  after.ProgressPercent,
-		"selected_slot_id":  stringValueOrDefault(after.SelectedSlotID),
+		"source":           source,
+		"previous_status":  before.Status,
+		"current_status":   after.Status,
+		"previous_stage":   before.CurrentStage,
+		"current_stage":    after.CurrentStage,
+		"previous_error":   beforeErrorCode,
+		"current_error":    afterErrorCode,
+		"progress_percent": after.ProgressPercent,
+		"selected_slot_id": stringValueOrDefault(after.SelectedSlotID),
 	})
 	return nil
 }

@@ -2,9 +2,11 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/ch1kim0n1/ghw-cloud26/backend/internal/constants"
 	"github.com/ch1kim0n1/ghw-cloud26/backend/internal/db"
@@ -12,11 +14,12 @@ import (
 )
 
 type WebsiteAdService struct {
-	repository    *db.WebsiteAdsRepository
-	products      *db.ProductsRepository
-	imageClient   WebsiteAdsImageClient
-	storage       *LocalStorageService
-	websiteAdsDir string
+	repository     *db.WebsiteAdsRepository
+	products       *db.ProductsRepository
+	imageClient    WebsiteAdsImageClient
+	storage        *LocalStorageService
+	websiteAdsDir  string
+	requestTimeout time.Duration
 }
 
 type CreateWebsiteAdInput struct {
@@ -34,13 +37,15 @@ func NewWebsiteAdService(
 	imageClient WebsiteAdsImageClient,
 	storage *LocalStorageService,
 	websiteAdsDir string,
+	requestTimeout time.Duration,
 ) *WebsiteAdService {
 	return &WebsiteAdService{
-		repository:    repository,
-		products:      products,
-		imageClient:   imageClient,
-		storage:       storage,
-		websiteAdsDir: websiteAdsDir,
+		repository:     repository,
+		products:       products,
+		imageClient:    imageClient,
+		storage:        storage,
+		websiteAdsDir:  websiteAdsDir,
+		requestTimeout: requestTimeout,
 	}
 }
 
@@ -88,21 +93,25 @@ func (s *WebsiteAdService) Create(ctx context.Context, input CreateWebsiteAdInpu
 		return models.WebsiteAdJob{}, DatabaseFailure("failed to create website ad job", map[string]any{"job_id": job.ID}, err)
 	}
 
-	banner, err := s.imageClient.Generate(ctx, WebsiteAdsImageGenerateRequest{
+	bannerCtx, bannerCancel := s.withProviderTimeout(ctx)
+	banner, err := s.imageClient.Generate(bannerCtx, WebsiteAdsImageGenerateRequest{
 		Prompt: job.Prompt + " Compose it as a polished horizontal web banner layout.",
 		Width:  1200,
 		Height: 628,
 	})
+	bannerCancel()
 	if err != nil {
 		_ = s.repository.UpdateResult(ctx, job.ID, constants.JobStatusFailed, "", "", TimestampNow())
 		return models.WebsiteAdJob{}, providerFailure(err, job.ID)
 	}
 
-	vertical, err := s.imageClient.Generate(ctx, WebsiteAdsImageGenerateRequest{
+	verticalCtx, verticalCancel := s.withProviderTimeout(ctx)
+	vertical, err := s.imageClient.Generate(verticalCtx, WebsiteAdsImageGenerateRequest{
 		Prompt: job.Prompt + " Compose it as a tall vertical sidebar ad layout.",
 		Width:  300,
 		Height: 600,
 	})
+	verticalCancel()
 	if err != nil {
 		_ = s.repository.UpdateResult(ctx, job.ID, constants.JobStatusFailed, "", "", TimestampNow())
 		return models.WebsiteAdJob{}, providerFailure(err, job.ID)
@@ -192,13 +201,23 @@ func buildWebsiteAdPrompt(input CreateWebsiteAdInput) string {
 	}
 
 	return fmt.Sprintf(
-		"Create a polished static website ad illustration that blends the article context with the advertised product. Article headline: %s. Article context: %s. Product: %s. Product details: %s. Visual style: %s, premium, vibrant, cohesive composition, product clearly visible, no readable text, no watermark, no collage, no split-screen, no brand logo.",
+		"Create a polished static website ad illustration that blends the article context with the advertised product. Article headline: %s. Article context: %s. Product: %s. Product details: %s. Visual style: %s, premium, vibrant, cohesive composition, product clearly visible, allow minimal readable branding, allow a subtle brand mark, no watermark, no collage, no split-screen.",
 		headline,
 		body,
 		compactWhitespace(input.ProductName),
 		compactWhitespace(input.ProductDescription),
 		style,
 	)
+}
+
+func (s *WebsiteAdService) withProviderTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+	if s.requestTimeout <= 0 {
+		return context.WithCancel(ctx)
+	}
+	if _, hasDeadline := ctx.Deadline(); hasDeadline {
+		return context.WithCancel(ctx)
+	}
+	return context.WithTimeout(ctx, s.requestTimeout)
 }
 
 func compactWhitespace(value string) string {
@@ -226,6 +245,11 @@ func extensionFromContentType(contentType string) string {
 }
 
 func providerFailure(err error, jobID string) error {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return NewAppError(502, constants.ErrorCodeGenerationFailed, "website ad generation timed out while waiting for the image provider", map[string]any{
+			"job_id": jobID,
+		}, err)
+	}
 	return NewAppError(502, constants.ErrorCodeGenerationFailed, "website ad image generation failed", map[string]any{
 		"job_id": jobID,
 	}, err)

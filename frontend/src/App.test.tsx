@@ -27,8 +27,9 @@ describe("App", () => {
     );
 
     expect(screen.getByRole("link", { name: "Home" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Gallery" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Upload" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Studio" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Gallery" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "About" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Results" })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "CAFAI turns product insertion into a scene-aware, watchable cut." })).toBeInTheDocument();
@@ -62,9 +63,55 @@ describe("App", () => {
     expect(screen.getByLabelText("Brand / Product name")).toBeInTheDocument();
     expect(screen.getByLabelText("Source video")).toBeInTheDocument();
     expect(screen.getByText("Drag an MP4 here or tap to browse.")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Upload a product" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open studio" })).toBeInTheDocument();
     expect(screen.queryByText("Product source")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Source URL")).not.toBeInTheDocument();
+  });
+
+  it("renders the studio route with recent jobs", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/api/jobs?limit=25")) {
+          return {
+            ok: true,
+            json: async () => ({
+              jobs: [
+                {
+                  id: "job_1",
+                  campaign_id: "camp_1",
+                  status: "queued",
+                  current_stage: "ready_for_analysis",
+                  progress_percent: 0,
+                  selected_slot_id: null,
+                  error_code: null,
+                  created_at: "2026-03-13T00:00:00Z",
+                  started_at: null,
+                  completed_at: null,
+                },
+              ],
+            }),
+          } as Response;
+        }
+
+        return {
+          ok: true,
+          json: async () => ({ products: [] }),
+        } as Response;
+      }),
+    );
+
+    render(
+      <MemoryRouter initialEntries={["/studio"]}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Recent CAFAI jobs")).toBeInTheDocument();
+    });
+    expect(screen.getByText("job_1")).toBeInTheDocument();
   });
 
   it("keeps the hidden results route accessible", () => {
@@ -76,6 +123,17 @@ describe("App", () => {
 
     expect(screen.getByText("Gallery of processed videos")).toBeInTheDocument();
     expect(screen.getByRole("tablist", { name: "Showcase examples" })).toBeInTheDocument();
+  });
+
+  it("renders the website ads route as an experimental side lane", () => {
+    render(
+      <MemoryRouter initialEntries={["/website-ads"]}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("Website ads stay available here as a secondary experimental lane.")).toBeInTheDocument();
+    expect(screen.getByText("experimental side lane")).toBeInTheDocument();
   });
 
   it("renders the about route with the upgraded founder cards", () => {
@@ -126,7 +184,7 @@ describe("App", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText(/Job dashboard test-job/)).toBeInTheDocument();
+    expect(screen.getByText(/Job studio test-job/)).toBeInTheDocument();
   });
 
   it("keeps the hidden preview page accessible", async () => {

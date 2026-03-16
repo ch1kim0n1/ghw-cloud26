@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ApiError } from "../types/Api";
 import type { JobLog } from "../types/Job";
 import { getJobLogs } from "../services/jobsApi";
+import { usePollingRequest } from "./usePollingRequest";
 
 interface UseJobLogsOptions {
   poll?: boolean;
@@ -12,66 +13,50 @@ export function useJobLogs(jobId?: string, options: UseJobLogsOptions = {}) {
   const [logs, setLogs] = useState<JobLog[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0);
 
-  useEffect(() => {
-    if (!jobId) {
-      return;
-    }
-
-    let cancelled = false;
-
-    const load = (showLoading: boolean) => {
+  const { refresh } = usePollingRequest(
+    async (showLoading, isCancelled) => {
+      if (!jobId) {
+        return;
+      }
       if (showLoading) {
         setLoading(true);
       }
 
-      return getJobLogs(jobId)
-        .then((response) => {
-          if (cancelled) {
-            return;
-          }
-          setLogs(response.logs ?? []);
-          setError(null);
-        })
-        .catch((reason: unknown) => {
-          if (cancelled) {
-            return;
-          }
-          if (reason instanceof ApiError) {
-            setError(reason.message);
-            return;
-          }
+      try {
+        const response = await getJobLogs(jobId);
+        if (isCancelled()) {
+          return;
+        }
+        setLogs(response.logs ?? []);
+        setError(null);
+      } catch (reason: unknown) {
+        if (isCancelled()) {
+          return;
+        }
+        if (reason instanceof ApiError) {
+          setError(reason.message);
+        } else {
           setError("Unable to load job logs.");
-        })
-        .finally(() => {
-          if (!cancelled) {
-            setLoading(false);
-          }
-        });
-    };
-
-    void load(true);
-
-    let intervalId: number | undefined;
-    if (options.poll) {
-      intervalId = window.setInterval(() => {
-        void load(false);
-      }, options.pollIntervalMs ?? 2000);
-    }
-
-    return () => {
-      cancelled = true;
-      if (intervalId !== undefined) {
-        window.clearInterval(intervalId);
+        }
+      } finally {
+        if (!isCancelled()) {
+          setLoading(false);
+        }
       }
-    };
-  }, [jobId, options.poll, options.pollIntervalMs, refreshKey]);
+    },
+    [jobId],
+    {
+      enabled: Boolean(jobId),
+      poll: options.poll,
+      pollIntervalMs: options.pollIntervalMs,
+    },
+  );
 
   return {
     logs,
     error,
     loading,
-    refresh: () => setRefreshKey((value) => value + 1),
+    refresh,
   };
 }

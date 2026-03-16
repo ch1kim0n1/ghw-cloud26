@@ -13,6 +13,19 @@ export interface Job {
   metadata?: Record<string, unknown>;
 }
 
+export interface JobSummary {
+  id: string;
+  campaign_id: string;
+  status: string;
+  current_stage?: string;
+  progress_percent: number;
+  selected_slot_id: string | null;
+  error_code: string | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
 export interface JobLog {
   timestamp: string;
   event_type: string;

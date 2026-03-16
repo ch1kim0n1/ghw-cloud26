@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ApiError } from "../types/Api";
 import type { Preview } from "../types/Preview";
 import { getPreview } from "../services/previewApi";
+import { usePollingRequest } from "./usePollingRequest";
 
 interface UsePreviewOptions {
   poll?: boolean;
@@ -12,72 +13,56 @@ export function usePreview(jobId?: string, options: UsePreviewOptions = {}) {
   const [preview, setPreview] = useState<Preview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0);
   const shouldPoll = options.poll ?? (preview?.status === "pending" || preview?.status === "stitching");
 
-  useEffect(() => {
-    if (!jobId) {
-      return;
-    }
-
-    let cancelled = false;
-
-    const load = (showLoading: boolean) => {
+  const { refresh } = usePollingRequest(
+    async (showLoading, isCancelled) => {
+      if (!jobId) {
+        return;
+      }
       if (showLoading) {
         setLoading(true);
       }
 
-      return getPreview(jobId)
-        .then((response) => {
-          if (cancelled) {
-            return;
-          }
-          setPreview(response);
+      try {
+        const response = await getPreview(jobId);
+        if (isCancelled()) {
+          return;
+        }
+        setPreview(response);
+        setError(null);
+      } catch (reason: unknown) {
+        if (isCancelled()) {
+          return;
+        }
+        if (reason instanceof ApiError && reason.status === 404) {
+          setPreview(null);
           setError(null);
-        })
-        .catch((reason: unknown) => {
-          if (cancelled) {
-            return;
-          }
-          if (reason instanceof ApiError && reason.status === 404) {
-            setPreview(null);
-            setError(null);
-            return;
-          }
-          if (reason instanceof ApiError) {
-            setError(reason.message);
-            return;
-          }
+          return;
+        }
+        if (reason instanceof ApiError) {
+          setError(reason.message);
+        } else {
           setError("Unable to load preview.");
-        })
-        .finally(() => {
-          if (!cancelled) {
-            setLoading(false);
-          }
-        });
-    };
-
-    void load(true);
-
-    let intervalId: number | undefined;
-    if (shouldPoll) {
-      intervalId = window.setInterval(() => {
-        void load(false);
-      }, options.pollIntervalMs ?? 2000);
-    }
-
-    return () => {
-      cancelled = true;
-      if (intervalId !== undefined) {
-        window.clearInterval(intervalId);
+        }
+      } finally {
+        if (!isCancelled()) {
+          setLoading(false);
+        }
       }
-    };
-  }, [jobId, options.poll, options.pollIntervalMs, refreshKey, shouldPoll]);
+    },
+    [jobId, shouldPoll],
+    {
+      enabled: Boolean(jobId),
+      poll: shouldPoll,
+      pollIntervalMs: options.pollIntervalMs,
+    },
+  );
 
   return {
     preview,
     error,
     loading,
-    refresh: () => setRefreshKey((value) => value + 1),
+    refresh,
   };
 }

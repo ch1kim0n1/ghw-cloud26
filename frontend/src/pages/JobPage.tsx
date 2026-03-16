@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { JobStatusCard } from "../components/JobStatusCard";
+import { useParams } from "react-router-dom";
+import { JobOperationsGrid } from "../components/job/JobOperationsGrid";
+import { JobSelectedSlotSummary } from "../components/job/JobSelectedSlotSummary";
+import { JobSlotReviewPanel } from "../components/job/JobSlotReviewPanel";
+import { JobWorkflowHero } from "../components/job/JobWorkflowHero";
 import { ProductLineEditor, type ProductLineMode } from "../components/ProductLineEditor";
-import { Reveal } from "../components/Reveal";
-import { SlotCard } from "../components/SlotCard";
 import { useHealth } from "../hooks/useHealth";
 import { useJob } from "../hooks/useJob";
 import { useJobLogs } from "../hooks/useJobLogs";
@@ -353,307 +354,82 @@ export function JobPage() {
 
   return (
     <div className="studio-page studio-page--job">
-      <Reveal as="section" className="studio-hero studio-hero--job">
-        <p className="eyebrow">Job workflow</p>
-        <h2>Job dashboard {jobId ?? "demo-job"}</h2>
-        <p>
-          Start analysis explicitly, review the ranked insertion slots, prepare one product line, and start CAFAI
-          generation for the selected candidate.
-        </p>
-        <p className="muted">
-          Demo runs can bypass live generation by importing a locally generated MP4 into the selected slot and then
-          continuing through preview render.
-        </p>
-        <div className="status-strip">
-          <span>{jobLoading ? "Loading job..." : jobError ?? job?.status ?? "Job unavailable"}</span>
-          <span>{slotsLoading ? "Loading slots..." : slotsError ?? `${slots.length} slot(s)`}</span>
-          <span>{logsLoading ? "Loading logs..." : logsError ?? `${logs.length} log entry(ies)`}</span>
-        </div>
-        <p>Detected content language: {detectedContentLanguage.toUpperCase()}</p>
-        {notionDashboardUrl ? (
-          <p>
-            <a href={notionDashboardUrl} target="_blank" rel="noreferrer">
-              View in Notion
-            </a>
-          </p>
-        ) : null}
-        {actionError ? <p className="form-message form-message--error">{actionError}</p> : null}
-        {actionMessage ? <p className="form-message form-message--success">{actionMessage}</p> : null}
-      </Reveal>
+      <JobWorkflowHero
+        actionError={actionError}
+        actionMessage={actionMessage}
+        detectedContentLanguage={detectedContentLanguage}
+        jobError={jobError}
+        jobId={jobId}
+        jobLoading={jobLoading}
+        logCount={logs.length}
+        logsError={logsError}
+        logsLoading={logsLoading}
+        notionDashboardUrl={notionDashboardUrl}
+        slotCount={slots.length}
+        slotsError={slotsError}
+        slotsLoading={slotsLoading}
+      />
 
-      <div className="card-grid">
-        <JobStatusCard
-          job={job}
-          loading={jobLoading}
-          error={jobError}
-          onStartAnalysis={handleStartAnalysis}
-          startDisabled={!canStartAnalysis}
-          startPending={startPending}
-        />
+      <JobOperationsGrid
+        allSlotsRejected={allSlotsRejected}
+        canRenderPreview={canRenderPreview}
+        canStartAnalysis={canStartAnalysis}
+        health={health}
+        healthError={healthError}
+        healthLoading={healthLoading}
+        job={job}
+        jobError={jobError}
+        jobId={jobId}
+        jobLoading={jobLoading}
+        logs={logs}
+        logsError={logsError}
+        notionDashboardUrl={notionDashboardUrl}
+        onRenderPreview={handleRenderPreview}
+        onRepick={handleRepick}
+        onStartAnalysis={handleStartAnalysis}
+        preview={preview}
+        previewDownloadUrl={previewDownloadUrl}
+        previewError={previewError}
+        previewLoading={previewLoading}
+        refreshHealth={refreshHealth}
+        renderPending={renderPending}
+        repickPending={repickPending}
+        selectedSlot={selectedSlot}
+        startPending={startPending}
+      />
 
-        <section className="card">
-          <div className="list-block__header">
-            <div>
-              <p className="eyebrow">Logs</p>
-              <h3>Operational timeline</h3>
-            </div>
-          </div>
-          {logsError ? <p className="muted">{logsError}</p> : null}
-          {logs.length === 0 ? <p>No job logs yet.</p> : null}
-          <div className="log-list">
-            {logs.map((log) => (
-              <div key={`${log.timestamp}-${log.message}`} className="log-item">
-                <strong>{log.event_type}</strong>
-                <span>{log.stage_name ?? "n/a"}</span>
-                <p>{log.message}</p>
-              </div>
-            ))}
-          </div>
-        </section>
+      <JobSlotReviewPanel
+        canSelectSlots={canSelectSlots}
+        manualEndSeconds={manualEndSeconds}
+        manualImportAudioPath={manualImportAudioPath}
+        manualImportClipPath={manualImportClipPath}
+        manualImportEndSeconds={manualImportEndSeconds}
+        manualImportPending={manualImportPending}
+        manualImportStartSeconds={manualImportStartSeconds}
+        manualSelectPending={manualSelectPending}
+        manualStartSeconds={manualStartSeconds}
+        noAutoSlotFound={noAutoSlotFound}
+        onManualEndSecondsChange={(event) => setManualEndSeconds(event.target.value)}
+        onManualImport={handleManualImport}
+        onManualImportAudioPathChange={(event) => setManualImportAudioPath(event.target.value)}
+        onManualImportClipPathChange={(event) => setManualImportClipPath(event.target.value)}
+        onManualImportEndSecondsChange={(event) => setManualImportEndSeconds(event.target.value)}
+        onManualImportStartSecondsChange={(event) => setManualImportStartSeconds(event.target.value)}
+        onManualSelect={handleManualSelect}
+        onManualStartSecondsChange={(event) => setManualStartSeconds(event.target.value)}
+        onReject={handleReject}
+        onSelect={handleSelect}
+        rejectingSlotId={rejectingSlotId}
+        selectedSlot={selectedSlot}
+        selectingSlotId={selectingSlotId}
+        slots={slots}
+        slotsError={slotsError}
+        slotsLoading={slotsLoading}
+      />
 
-        <section className="card">
-          <div className="list-block__header">
-            <div>
-              <p className="eyebrow">Notion audit</p>
-              <h3>Live integration status</h3>
-            </div>
-            <button className="button-secondary" type="button" onClick={refreshHealth} disabled={healthLoading}>
-              {healthLoading ? "Refreshing..." : "Refresh"}
-            </button>
-          </div>
-          {healthError ? <p className="form-message form-message--error">{healthError}</p> : null}
-          <p>
-            Audit sink: {healthLoading && !health ? "loading" : health?.audit?.enabled ? "enabled" : "disabled"}
-          </p>
-          <p>Status: {healthLoading && !health ? "loading" : health?.audit?.status ?? "unknown"}</p>
-          <p className="muted">{health?.audit?.details ?? "Audit status details are not available yet."}</p>
-          <p className="muted">Backend health: {health?.status ?? "unknown"}</p>
-          {notionDashboardUrl ? (
-            <div className="form-actions">
-              <a href={notionDashboardUrl} target="_blank" rel="noreferrer">
-                Open Notion dashboard
-              </a>
-            </div>
-          ) : null}
-        </section>
-
-        <section className="card">
-          <div className="list-block__header">
-            <div>
-              <p className="eyebrow">Slot actions</p>
-              <h3>Re-pick control</h3>
-            </div>
-            <button className="button-secondary" type="button" onClick={handleRepick} disabled={!allSlotsRejected || repickPending}>
-              {repickPending ? "Requesting..." : "Re-pick slots"}
-            </button>
-          </div>
-          <p className="muted">Re-pick is only available after all currently proposed slots have been rejected.</p>
-          <p>Current gate: {allSlotsRejected ? "all slots rejected" : "waiting for more rejections"}</p>
-        </section>
-
-        <section className="card">
-          <div className="list-block__header">
-            <div>
-              <p className="eyebrow">Preview render</p>
-              <h3>Phase 4</h3>
-            </div>
-            <button className="button-secondary" type="button" onClick={handleRenderPreview} disabled={!canRenderPreview}>
-              {renderPending ? "Starting..." : preview?.status === "failed" ? "Retry render" : "Render preview"}
-            </button>
-          </div>
-          <p className="muted">
-            {previewLoading
-              ? "Loading preview state..."
-              : previewError ?? previewSummary(preview?.status, selectedSlot?.status)}
-          </p>
-          {preview?.error_message ? <p className="form-message form-message--error">{preview.error_message}</p> : null}
-          {preview ? <p>Preview status: {preview.status}</p> : null}
-          {preview ? <p>Retry count: {preview.render_retry_count ?? 0}</p> : null}
-          <div className="form-actions">
-            {preview ? <Link to={`/jobs/${jobId}/preview`}>Open preview</Link> : null}
-            {previewDownloadUrl ? (
-              <a href={previewDownloadUrl} download>
-                Download preview
-              </a>
-            ) : null}
-          </div>
-        </section>
-      </div>
-
-      <section className="panel panel--studio">
-        <div className="list-block__header">
-          <div>
-            <p className="eyebrow">Slot review</p>
-            <h2>Current candidates</h2>
-          </div>
-        </div>
-        {slotsError ? <p className="form-message form-message--error">{slotsError}</p> : null}
-        {canSelectSlots || selectedSlot ? (
-          <details className="studio-disclosure" open={noAutoSlotFound}>
-            <summary>Advanced recovery and manual overrides</summary>
-            <div className="studio-disclosure__content">
-              {canSelectSlots ? (
-                <section className="card">
-                  <div className="list-block__header">
-                    <div>
-                      <p className="eyebrow">Manual override</p>
-                      <h3>Pick a slot by time</h3>
-                    </div>
-                  </div>
-                  <p className="muted">
-                    {noAutoSlotFound
-                      ? "Automatic ranking found no suitable slot. Manual selection is the primary recovery path."
-                      : "Use manual selection when you want to override the automatic slot proposals."}
-                  </p>
-                  <div className="form-grid">
-                    <div className="field-row">
-                      <label className="field">
-                        <span>Start seconds</span>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.1"
-                          value={manualStartSeconds}
-                          onChange={(event) => setManualStartSeconds(event.target.value)}
-                        />
-                      </label>
-                      <label className="field">
-                        <span>End seconds</span>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.1"
-                          value={manualEndSeconds}
-                          onChange={(event) => setManualEndSeconds(event.target.value)}
-                        />
-                      </label>
-                    </div>
-                    <div className="form-actions">
-                      <button type="button" onClick={handleManualSelect} disabled={manualSelectPending}>
-                        {manualSelectPending ? "Selecting..." : "Select manual slot"}
-                      </button>
-                    </div>
-                  </div>
-                </section>
-              ) : null}
-
-              <section className="card">
-                <div className="list-block__header">
-                  <div>
-                    <p className="eyebrow">Manual generation import</p>
-                    <h3>Use a locally generated clip</h3>
-                  </div>
-                </div>
-                <p className="muted">
-                  {selectedSlot
-                    ? "Import the generated bridge clip into the currently selected slot, then render the preview normally."
-                    : "If no slot is selected yet, provide the generated clip plus anchor times inside one analyzed scene."}
-                </p>
-                <div className="form-grid">
-                  <label className="field">
-                    <span>Generated clip path</span>
-                    <input
-                      type="text"
-                      placeholder="/absolute/path/to/generated.mp4"
-                      value={manualImportClipPath}
-                      onChange={(event) => setManualImportClipPath(event.target.value)}
-                    />
-                  </label>
-                  <label className="field">
-                    <span>Generated audio path (optional)</span>
-                    <input
-                      type="text"
-                      placeholder="/absolute/path/to/generated.wav"
-                      value={manualImportAudioPath}
-                      onChange={(event) => setManualImportAudioPath(event.target.value)}
-                    />
-                  </label>
-                  {!selectedSlot ? (
-                    <div className="field-row">
-                      <label className="field">
-                        <span>Import start seconds</span>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.1"
-                          value={manualImportStartSeconds}
-                          onChange={(event) => setManualImportStartSeconds(event.target.value)}
-                        />
-                      </label>
-                      <label className="field">
-                        <span>Import end seconds</span>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.1"
-                          value={manualImportEndSeconds}
-                          onChange={(event) => setManualImportEndSeconds(event.target.value)}
-                        />
-                      </label>
-                    </div>
-                  ) : null}
-                  <div className="form-actions">
-                    <button type="button" onClick={handleManualImport} disabled={manualImportPending}>
-                      {manualImportPending ? "Importing..." : "Import generated clip"}
-                    </button>
-                  </div>
-                </div>
-              </section>
-            </div>
-          </details>
-        ) : null}
-        {!slotsLoading && slots.length === 0 ? <p>No slots available yet.</p> : null}
-        <div className="card-grid">
-          {slots.map((slot) => (
-            <SlotCard
-              key={slot.id}
-              slot={slot}
-              onSelect={handleSelect}
-              onReject={handleReject}
-              selectDisabled={!canSelectSlots || (selectingSlotId !== null && selectingSlotId !== slot.id)}
-              rejectDisabled={!canSelectSlots || (rejectingSlotId !== null && rejectingSlotId !== slot.id)}
-            />
-          ))}
-        </div>
-      </section>
-
-      {selectedSlot ? (
-        <section className="panel panel--studio">
-          <div className="list-block__header">
-            <div>
-              <p className="eyebrow">Selected slot</p>
-              <h2>Generation handoff</h2>
-            </div>
-          </div>
-          <p>Slot ID: {selectedSlot.id}</p>
-          <p>
-            Anchor frames: {selectedSlot.anchor_start_frame} to {selectedSlot.anchor_end_frame}
-          </p>
-          {selectedSlot.generated_clip_path ? <p>Generated clip: {selectedSlot.generated_clip_path}</p> : null}
-          {selectedSlot.generated_audio_path ? <p>Generated audio: {selectedSlot.generated_audio_path}</p> : null}
-        </section>
-      ) : null}
+      {selectedSlot ? <JobSelectedSlotSummary selectedSlot={selectedSlot} /> : null}
 
       {selectedSlot ? <ProductLineEditor slot={selectedSlot} pending={generatePending} onGenerate={handleGenerate} /> : null}
     </div>
   );
-}
-
-function previewSummary(previewStatus?: string, slotStatus?: string): string {
-  if (previewStatus === "pending") {
-    return "Preview render is queued.";
-  }
-  if (previewStatus === "stitching") {
-    return "Preview render is in progress.";
-  }
-  if (previewStatus === "completed") {
-    return "Preview render completed.";
-  }
-  if (previewStatus === "failed") {
-    return "Preview render failed. Retry is available.";
-  }
-  if (slotStatus === "generated") {
-    return "Generated slot is ready for preview rendering.";
-  }
-  return "Preview rendering becomes available after CAFAI generation succeeds.";
 }

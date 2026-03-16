@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "test": "vitest run",
-    "capture-website-ad-previews": "node scripts/captureWebsiteAdPreviews.mjs"
+    "capture-website-ad-previews": "node scripts/captureWebsiteAdPreviews.mjs",
+    "capture-readme-screenshots": "node scripts/captureReadmeScreenshots.mjs",
+    "smoke:video-flow": "node scripts/smokeVideoFlow.mjs"
   },
   "dependencies": {
     "@react-spring/web": "^9.7.5",

@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ApiError } from "../types/Api";
 import type { Slot } from "../types/Slot";
 import { listSlots } from "../services/slotsApi";
+import { usePollingRequest } from "./usePollingRequest";
 
 interface UseSlotsOptions {
   poll?: boolean;
@@ -12,66 +13,50 @@ export function useSlots(jobId?: string, options: UseSlotsOptions = {}) {
   const [slots, setSlots] = useState<Slot[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0);
 
-  useEffect(() => {
-    if (!jobId) {
-      return;
-    }
-
-    let cancelled = false;
-
-    const load = (showLoading: boolean) => {
+  const { refresh } = usePollingRequest(
+    async (showLoading, isCancelled) => {
+      if (!jobId) {
+        return;
+      }
       if (showLoading) {
         setLoading(true);
       }
 
-      return listSlots(jobId)
-      .then((response) => {
-        if (cancelled) {
+      try {
+        const response = await listSlots(jobId);
+        if (isCancelled()) {
           return;
         }
         setSlots(response.slots ?? []);
         setError(null);
-      })
-      .catch((reason: unknown) => {
-        if (cancelled) {
+      } catch (reason: unknown) {
+        if (isCancelled()) {
           return;
         }
         if (reason instanceof ApiError) {
           setError(reason.message);
-          return;
+        } else {
+          setError("Unable to load slots.");
         }
-        setError("Unable to load slots.");
-      })
-      .finally(() => {
-        if (!cancelled) {
+      } finally {
+        if (!isCancelled()) {
           setLoading(false);
         }
-      });
-    };
-
-    void load(true);
-
-    let intervalId: number | undefined;
-    if (options.poll) {
-      intervalId = window.setInterval(() => {
-        void load(false);
-      }, options.pollIntervalMs ?? 2000);
-    }
-
-    return () => {
-      cancelled = true;
-      if (intervalId !== undefined) {
-        window.clearInterval(intervalId);
       }
-    };
-  }, [jobId, options.poll, options.pollIntervalMs, refreshKey]);
+    },
+    [jobId],
+    {
+      enabled: Boolean(jobId),
+      poll: options.poll,
+      pollIntervalMs: options.pollIntervalMs,
+    },
+  );
 
   return {
     slots,
     error,
     loading,
-    refresh: () => setRefreshKey((value) => value + 1),
+    refresh,
   };
 }

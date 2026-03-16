@@ -14,9 +14,9 @@ export function ResultsPage() {
       </section>
       <ShowcaseResult />
       <WebsiteAdsShowcase
-        eyebrow="Static ad gallery"
-        title="Website ad previews live next to the video examples"
-        lede="The gallery now carries both proof types: stitched video outputs and static website-ad placements captured on real pages."
+        eyebrow="Experimental side lane"
+        title="Website ad previews live here as a secondary proof set"
+        lede="The main CAFAI MVP is still the video workflow. This gallery keeps the static website-ad experiments visible without presenting them as the core studio path."
       />
     </div>
   );

@@ -1,7 +1,9 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/ch1kim0n1/ghw-cloud26/backend/internal/db"
 	"github.com/ch1kim0n1/ghw-cloud26/backend/internal/services"
@@ -14,6 +16,23 @@ func newJobsHandler(deps Dependencies) http.HandlerFunc {
 		jobID := r.PathValue("job_id")
 
 		switch r.URL.Path {
+		case "/api/jobs":
+			limit, err := parseJobListLimit(r.URL.Query().Get("limit"))
+			if err != nil {
+				writeServiceError(w, services.InvalidRequest("INVALID_REQUEST", err.Error(), map[string]any{
+					"field": "limit",
+				}))
+				return
+			}
+
+			jobs, err := service.ListRecent(r.Context(), limit)
+			if err != nil {
+				writeServiceError(w, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{
+				"jobs": jobs,
+			})
 		case "/api/jobs/" + jobID:
 			job, err := service.Get(r.Context(), jobID)
 			if err != nil {
@@ -37,6 +56,24 @@ func newJobsHandler(deps Dependencies) http.HandlerFunc {
 			})
 		}
 	}
+}
+
+func parseJobListLimit(raw string) (int, error) {
+	if raw == "" {
+		return 25, nil
+	}
+
+	limit, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, fmt.Errorf("limit must be a positive integer")
+	}
+	if limit <= 0 {
+		return 0, fmt.Errorf("limit must be a positive integer")
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	return limit, nil
 }
 
 func newJobService(deps Dependencies) *services.JobService {

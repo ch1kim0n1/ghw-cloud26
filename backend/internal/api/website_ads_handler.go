@@ -17,6 +17,7 @@ func newWebsiteAdsHandler(deps Dependencies) http.HandlerFunc {
 		deps.WebsiteAdsImageClient,
 		services.NewLocalStorageService(),
 		deps.Config.WebsiteAdsDir,
+		deps.Config.HuggingFaceRequestTimeout,
 	)
 
 	return func(w http.ResponseWriter, r *http.Request) {

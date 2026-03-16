@@ -24,7 +24,7 @@
 
 ## What It Does
 
-CAFAI is an operator-driven creative generation workflow with two powerful lanes:
+CAFAI is an operator-driven creative generation workflow with one primary MVP lane and one secondary experimental lane:
 
 ### Video Ad Lane
 Transform your videos with intelligent branded moments:
@@ -35,14 +35,14 @@ Transform your videos with intelligent branded moments:
 - Stitch the clip back into your footage
 - Export a beautiful downloadable preview MP4
 
-### Website Ad Lane  
-Create stunning ads from article context:
+### Experimental Website Ad Lane  
+Create static ad experiments from article context:
 - Choose a saved product or create one inline
 - Paste your article headline and content
 - Choose a visual direction
 - Generate banner and vertical ads
-- Review outputs in real-time gallery
-- Go live instantly
+- Review outputs on-page and in the proof gallery
+- Treat the output as an experimental side lane, not the core CAFAI workflow
 
 ## Tech Stack
 
@@ -54,7 +54,7 @@ CAFAI combines best-of-breed tools across multiple domains:
 
 **Frontend**  
 React + TypeScript  
-Vite + TailwindCSS
+Vite + custom CSS
 </td>
 <td align="center">
 
@@ -93,6 +93,17 @@ Real-time Logging
 </table>
 
 ---
+
+## Product Shape
+
+The primary user path is:
+
+1. `Upload` a video campaign
+2. open the `Studio`
+3. review and generate in the job workflow
+4. inspect finished outputs in the `Gallery`
+
+Website ads remain accessible as a secondary experimental lane and public proof surface.
 
 ## How Website Ads Work
 
@@ -211,7 +222,7 @@ Three polished examples showcasing our engine's capabilities:
 
 ---
 
-The shipped website-ads flow is synchronous and intentionally simple:
+The shipped website-ads flow is synchronous and intentionally simple, and it is positioned as an experimental side lane:
 
 1. the frontend sends `product_id` or inline product data, `article_headline`, `article_body`, and `brand_style` to `POST /api/website-ads`
 2. the backend validates the payload and resolves the product if a saved product was selected

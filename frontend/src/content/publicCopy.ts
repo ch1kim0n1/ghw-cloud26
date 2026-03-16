@@ -8,9 +8,9 @@ export const publicCopy = {
   },
   nav: {
     home: "Home",
-    gallery: "Gallery",
-    websiteAds: "Website Ads",
     upload: "Upload",
+    studio: "Studio",
+    gallery: "Gallery",
     about: "About",
   },
   landing: {
@@ -54,18 +54,18 @@ export const publicCopy = {
     aboutCta: "Meet the duo",
   },
   websiteAds: {
-    eyebrow: "Static ads, same pink universe",
-    title: "Three real-site website ad previews, each with injected placements.",
+    eyebrow: "Experimental static ad lab",
+    title: "Website ads stay available here as a secondary experimental lane.",
     lede:
-      "The website ads section now behaves like a proof gallery: each example shows a real captured page with the banner and vertical ad baked directly into the screenshot.",
+      "The core CAFAI MVP is video insertion. This page keeps the static-ad experiments accessible, with real captured pages and generated placements shown honestly as a side lane.",
   },
   upload: {
-    eyebrow: "Drop a new clip",
-    title: "Hand over a video and let the CAFAI pipeline get busy.",
+    eyebrow: "Primary MVP intake",
+    title: "Start with a video and move it into the CAFAI review workflow.",
     lede:
-      "Give the run a name, pick the brand, and drop in an MP4. The public flow stays clean while the operator tooling keeps working behind the curtain.",
-    chips: ["One sweet upload step", "Proof-ready output", "Operator view stays available"],
-    primaryCta: "Start the pretty pipeline",
+      "Create a campaign, upload one MP4, and enter the documented CAFAI path: explicit analysis start, slot review, product-line review, and final preview rendering.",
+    chips: ["Video MVP first", "Studio review stays reachable", "Website ads remain experimental"],
+    primaryCta: "Create video run",
     secondaryCta: "Back to home",
     productCta: "Upload a product",
     dropzoneTitle: "Source video",

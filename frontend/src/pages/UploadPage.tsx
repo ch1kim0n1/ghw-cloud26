@@ -1,9 +1,12 @@
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { ChangeEvent, DragEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
-import { contentSwapVariants, publicLayoutTransition, publicSwapTransition } from "../components/publicMotion";
+import { ChangeEvent, DragEvent, FormEvent, useEffect, useRef, useState } from "react";
+import { contentSwapVariants, publicSwapTransition } from "../components/publicMotion";
 import { FloatingDecor } from "../components/FloatingDecor";
-import { DownloadIcon, HeartIcon, SparkleIcon, UploadIcon } from "../components/PinkIcons";
+import { HeartIcon, SparkleIcon, UploadIcon } from "../components/PinkIcons";
+import { ShowcaseUploadPanel } from "../components/upload/ShowcaseUploadPanel";
+import { VideoUploadFlow } from "../components/upload/VideoUploadFlow";
+import { WebsiteAdsFlow } from "../components/upload/WebsiteAdsFlow";
+import type { VideoUploadFormState, WebsiteUploadFormState } from "../components/upload/types";
 import { runtimeConfig } from "../config/runtime";
 import { publicCopy } from "../content/publicCopy";
 import { websiteAdsContent } from "../content/websiteAdsContent";
@@ -11,7 +14,6 @@ import { useJob } from "../hooks/useJob";
 import { usePreview } from "../hooks/usePreview";
 import { startAnalysis } from "../services/analysisApi";
 import { createCampaign } from "../services/campaignsApi";
-import { buildApiUrl } from "../services/apiClient";
 import { getPreviewDownloadUrl } from "../services/previewApi";
 import { listProducts } from "../services/productsApi";
 import { createWebsiteAd } from "../services/websiteAdsApi";
@@ -19,20 +21,10 @@ import { ApiError } from "../types/Api";
 import type { Product } from "../types/Product";
 import type { WebsiteAdJob } from "../types/WebsiteAd";
 
-const initialVideoFormState = {
+const initialVideoFormState: VideoUploadFormState = {
   campaignName: "",
   brandName: "",
   videoFile: null as File | null,
-};
-
-type WebsiteUploadFormState = {
-  productMode: "existing" | "custom";
-  productId: string;
-  productName: string;
-  productDescription: string;
-  articleHeadline: string;
-  articleBody: string;
-  brandStyle: string;
 };
 
 const initialWebsiteFormState: WebsiteUploadFormState = {
@@ -59,7 +51,7 @@ export function UploadPage() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [productsLoading, setProductsLoading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { job, error: jobError, loading: jobLoading } = useJob(createdJobId ?? undefined, {
     poll: Boolean(createdJobId),
@@ -98,17 +90,6 @@ export function UploadPage() {
     createdJobId && preview?.status === "completed" && preview.output_video_path
       ? getPreviewDownloadUrl(createdJobId)
       : undefined;
-
-  const friendlyStatus = useMemo(() => buildFriendlyStatus(job?.status, job?.current_stage, preview?.status), [
-    job?.status,
-    job?.current_stage,
-    preview?.status,
-  ]);
-  const progressSteps = useMemo(() => buildUploadProgressSteps(job?.status, job?.current_stage, preview?.status), [
-    job?.status,
-    job?.current_stage,
-    preview?.status,
-  ]);
 
   useEffect(() => {
     if (uploadMode !== "video") {
@@ -314,371 +295,45 @@ export function UploadPage() {
           >
             {isShowcaseMode ? <ShowcaseUploadPanel uploadMode={uploadMode} /> : null}
 
-            {!isShowcaseMode && uploadMode === "video" && !shouldShowVideoProgressState ? (
-              <form className="upload-form" onSubmit={handleVideoSubmit}>
-                <label className="cute-field">
-                  <span>Campaign name</span>
-                  <input
-                    value={videoFormState.campaignName}
-                    onChange={(event) => setVideoFormState((current) => ({ ...current, campaignName: event.target.value }))}
-                    placeholder="Cherry pixel dream"
-                    required
-                  />
-                </label>
+            <VideoUploadFlow
+              active={uploadMode === "video"}
+              createdJobId={createdJobId}
+              error={error}
+              fileInputRef={fileInputRef}
+              isShowcaseMode={isShowcaseMode}
+              job={job}
+              jobError={jobError}
+              jobLoading={jobLoading}
+              onAssignFile={assignFile}
+              onDrop={handleDrop}
+              onFileSelection={handleFileSelection}
+              onFormStateChange={setVideoFormState}
+              onResetFlow={() => resetFlow("video")}
+              onSetDragging={setDragging}
+              onSubmit={handleVideoSubmit}
+              preview={preview}
+              previewDownloadUrl={previewDownloadUrl}
+              previewError={previewError}
+              statusMessage={statusMessage}
+              submitting={submitting}
+              videoFormState={videoFormState}
+              dragging={dragging}
+            />
 
-                <label className="cute-field">
-                  <span>Brand / Product name</span>
-                  <input
-                    value={videoFormState.brandName}
-                    onChange={(event) => setVideoFormState((current) => ({ ...current, brandName: event.target.value }))}
-                    placeholder="Cherry Pop"
-                    required
-                  />
-                </label>
-
-                <div
-                  className={`upload-dropzone${dragging ? " upload-dropzone--dragging" : ""}${videoFormState.videoFile ? " upload-dropzone--has-file" : ""}`}
-                  onDragEnter={(event) => {
-                    event.preventDefault();
-                    setDragging(true);
-                  }}
-                  onDragLeave={(event) => {
-                    event.preventDefault();
-                    setDragging(false);
-                  }}
-                  onDragOver={(event) => {
-                    event.preventDefault();
-                    setDragging(true);
-                  }}
-                  onDrop={handleDrop}
-                >
-                  <input
-                    ref={fileInputRef}
-                    aria-label={publicCopy.upload.dropzoneTitle}
-                    className="upload-dropzone__input"
-                    type="file"
-                    accept=".mp4,video/mp4"
-                    onChange={handleFileSelection}
-                  />
-
-                  <div className="upload-dropzone__content">
-                    <div className="upload-dropzone__chips">
-                      <span className="voxel-chip voxel-chip--soft">{publicCopy.upload.dropzoneTitle}</span>
-                      <span className={`signal-pill${dragging ? " signal-pill--warm" : ""}`}>
-                        {dragging ? "drop to attach" : videoFormState.videoFile ? "file ready" : "mp4 only"}
-                      </span>
-                    </div>
-                    <strong>{publicCopy.upload.dropzoneHint}</strong>
-                    <p>{publicCopy.upload.dropzoneSubhint}</p>
-
-                    <div className="upload-dropzone__actions">
-                      <button className="cute-button cute-button--secondary" type="button" onClick={() => fileInputRef.current?.click()}>
-                        Browse files
-                      </button>
-                      {videoFormState.videoFile ? (
-                        <button className="cute-button cute-button--secondary" type="button" onClick={() => assignFile(null)}>
-                          {publicCopy.upload.resetLabel}
-                        </button>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  {videoFormState.videoFile ? (
-                    <div className="upload-dropzone__file">
-                      <span>{publicCopy.upload.selectedFileLabel}</span>
-                      <strong>{videoFormState.videoFile.name}</strong>
-                      <small>{formatFileSize(videoFormState.videoFile.size)}</small>
-                    </div>
-                  ) : null}
-                </div>
-
-                <div className="upload-form__actions">
-                  <button type="submit" className="cute-button" disabled={submitting}>
-                    {submitting ? "Uploading..." : publicCopy.upload.primaryCta}
-                  </button>
-                  <Link className="cute-button cute-button--secondary" to="/products">
-                    <HeartIcon className="inline-icon" />
-                    {publicCopy.upload.productCta}
-                  </Link>
-                  <Link className="cute-link" to="/">
-                    {publicCopy.upload.secondaryCta}
-                  </Link>
-                </div>
-              </form>
-            ) : null}
-
-            {!isShowcaseMode && shouldShowVideoProgressState ? (
-              <div className="upload-status-card">
-                <div className="upload-status-card__top">
-                  <div>
-                    <span className={`status-pill status-pill--${statusTone(job?.status, preview?.status)}`}>
-                      {preview?.status === "completed" ? "completed" : job?.status ?? "queued"}
-                    </span>
-                    <h2>{publicCopy.upload.statusTitle}</h2>
-                  </div>
-                  <button type="button" className="cute-button cute-button--secondary" onClick={() => resetFlow("video")}>
-                    Upload another video
-                  </button>
-                </div>
-
-                <div className="upload-progress-rail" aria-label="Pipeline progress">
-                  {progressSteps.map((step) => (
-                    <motion.div
-                      key={step.label}
-                      className={`upload-progress-step upload-progress-step--${step.state}`}
-                      layout
-                      transition={publicLayoutTransition}
-                    >
-                      <small>{step.kicker}</small>
-                      <strong>{step.label}</strong>
-                    </motion.div>
-                  ))}
-                </div>
-
-                <AnimatePresence mode="wait" initial={false}>
-                  <motion.p
-                    key={statusMessage ?? friendlyStatus}
-                    className="upload-status-card__message"
-                    initial={reducedMotion ? false : { opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={reducedMotion ? undefined : { opacity: 0, y: -6 }}
-                    transition={publicSwapTransition}
-                  >
-                    {statusMessage ?? friendlyStatus}
-                  </motion.p>
-                </AnimatePresence>
-
-                <div className="upload-status-grid">
-                  <motion.div layout transition={publicLayoutTransition}>
-                    <span>Stage</span>
-                    <strong>{job?.current_stage ?? "starting"}</strong>
-                  </motion.div>
-                  <motion.div layout transition={publicLayoutTransition}>
-                    <span>Progress</span>
-                    <strong>{job?.progress_percent ?? 0}%</strong>
-                  </motion.div>
-                  <motion.div layout transition={publicLayoutTransition}>
-                    <span>Preview</span>
-                    <strong>{preview?.status ?? "not ready yet"}</strong>
-                  </motion.div>
-                </div>
-
-                {error ? <p className="form-message form-message--error">{error}</p> : null}
-                {jobError ? <p className="form-message form-message--error">{jobError}</p> : null}
-                {previewError ? <p className="form-message form-message--error">{previewError}</p> : null}
-                {jobLoading ? <p className="loading-inline">Refreshing pipeline status...</p> : null}
-
-                <div className="upload-status-card__actions">
-                  {createdJobId ? <Link className="cute-link" to={`/jobs/${createdJobId}`}>{publicCopy.upload.reviewLink}</Link> : null}
-                  {createdJobId && preview?.status === "completed" ? (
-                    <Link className="cute-link" to={`/jobs/${createdJobId}/preview`}>
-                      {publicCopy.upload.previewLink}
-                    </Link>
-                  ) : null}
-                  {previewDownloadUrl ? (
-                    <a className="cute-link" href={previewDownloadUrl} download>
-                      <DownloadIcon className="inline-icon" />
-                      Download preview
-                    </a>
-                  ) : null}
-                </div>
-              </div>
-            ) : null}
-
-            {!isShowcaseMode && uploadMode === "website" && !shouldShowWebsiteResult ? (
-              <form className="upload-form upload-form--website" onSubmit={handleWebsiteSubmit}>
-                <fieldset className="mode-toggle">
-                  <legend>Product source</legend>
-                  <label
-                    className={
-                      websiteFormState.productMode === "custom" ? "mode-toggle__option mode-toggle__option--active" : "mode-toggle__option"
-                    }
-                  >
-                    <input
-                      type="radio"
-                      name="website-product-mode"
-                      checked={websiteFormState.productMode === "custom"}
-                      onChange={() => setWebsiteFormState((current) => ({ ...current, productMode: "custom" }))}
-                    />
-                    Custom product
-                  </label>
-                  <label
-                    className={
-                      websiteFormState.productMode === "existing" ? "mode-toggle__option mode-toggle__option--active" : "mode-toggle__option"
-                    }
-                  >
-                    <input
-                      type="radio"
-                      name="website-product-mode"
-                      checked={websiteFormState.productMode === "existing"}
-                      onChange={() => setWebsiteFormState((current) => ({ ...current, productMode: "existing" }))}
-                    />
-                    Saved product
-                  </label>
-                </fieldset>
-
-                {websiteFormState.productMode === "existing" ? (
-                  productsLoading ? (
-                    <div className="loading-surface" aria-hidden="true">
-                      <div className="loading-surface__bar" />
-                      <div className="loading-surface__bar loading-surface__bar--short" />
-                    </div>
-                  ) : (
-                    <label className="cute-field">
-                      <span>Saved product</span>
-                      <select
-                        value={websiteFormState.productId}
-                        onChange={(event) => setWebsiteFormState((current) => ({ ...current, productId: event.target.value }))}
-                        required
-                      >
-                        <option value="">Select one product</option>
-                        {products.map((product) => (
-                          <option key={product.id} value={product.id}>
-                            {product.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  )
-                ) : (
-                  <div className="field-row">
-                    <label className="cute-field">
-                      <span>Product name</span>
-                      <input
-                        value={websiteFormState.productName}
-                        onChange={(event) => setWebsiteFormState((current) => ({ ...current, productName: event.target.value }))}
-                        placeholder="Cherry Pop"
-                        required
-                      />
-                    </label>
-                    <label className="cute-field">
-                      <span>Product description</span>
-                      <input
-                        value={websiteFormState.productDescription}
-                        onChange={(event) => setWebsiteFormState((current) => ({ ...current, productDescription: event.target.value }))}
-                        placeholder="Sparkling soda for bright little desk breaks"
-                        required
-                      />
-                    </label>
-                  </div>
-                )}
-
-                <label className="cute-field">
-                  <span>Article headline</span>
-                  <input
-                    value={websiteFormState.articleHeadline}
-                    onChange={(event) => setWebsiteFormState((current) => ({ ...current, articleHeadline: event.target.value }))}
-                    placeholder="Teaching Cultural, Historical, and Religious Landscapes with the Anime Demon Slayer"
-                    required
-                  />
-                </label>
-
-                <label className="cute-field">
-                  <span>Article context</span>
-                  <textarea
-                    rows={7}
-                    value={websiteFormState.articleBody}
-                    onChange={(event) => setWebsiteFormState((current) => ({ ...current, articleBody: event.target.value }))}
-                    placeholder="Paste the article summary or relevant body text to drive the website ad pipeline."
-                    required
-                  />
-                </label>
-
-                <label className="cute-field">
-                  <span>Visual direction</span>
-                  <select
-                    value={websiteFormState.brandStyle}
-                    onChange={(event) => setWebsiteFormState((current) => ({ ...current, brandStyle: event.target.value }))}
-                  >
-                    {websiteAdsContent.styleOptions.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <div className="upload-form__actions">
-                  <button type="submit" className="cute-button" disabled={submitting}>
-                    {submitting ? "Generating..." : "Start website ad pipeline"}
-                  </button>
-                  <Link className="cute-button cute-button--secondary" to="/website-ads">
-                    <HeartIcon className="inline-icon" />
-                    Open website ads gallery
-                  </Link>
-                  <Link className="cute-link" to="/">
-                    {publicCopy.upload.secondaryCta}
-                  </Link>
-                </div>
-              </form>
-            ) : null}
-
-            {!isShowcaseMode && shouldShowWebsiteResult && createdWebsiteAd ? (
-              <div className="upload-status-card upload-status-card--website">
-                <div className="upload-status-card__top">
-                  <div>
-                    <span className="status-pill status-pill--success">completed</span>
-                    <h2>Website ad set ready</h2>
-                  </div>
-                  <button type="button" className="cute-button cute-button--secondary" onClick={() => resetFlow("website")}>
-                    Create another website ad
-                  </button>
-                </div>
-
-                <div className="upload-progress-rail upload-progress-rail--website" aria-label="Website ad progress">
-                  <motion.div className="upload-progress-step upload-progress-step--done" layout transition={publicLayoutTransition}>
-                    <small>brief</small>
-                    <strong>Context parsed</strong>
-                  </motion.div>
-                  <motion.div className="upload-progress-step upload-progress-step--done" layout transition={publicLayoutTransition}>
-                    <small>creative</small>
-                    <strong>Assets rendered</strong>
-                  </motion.div>
-                  <motion.div className="upload-progress-step upload-progress-step--active" layout transition={publicLayoutTransition}>
-                    <small>review</small>
-                    <strong>Gallery ready</strong>
-                  </motion.div>
-                </div>
-
-                <p className="upload-status-card__message">{statusMessage ?? "Your website banner pair is ready for review."}</p>
-
-                <div className="upload-status-grid">
-                  <div>
-                    <span>Product</span>
-                    <strong>{createdWebsiteAd.product_name}</strong>
-                  </div>
-                  <div>
-                    <span>Status</span>
-                    <strong>{createdWebsiteAd.status}</strong>
-                  </div>
-                  <div>
-                    <span>Style</span>
-                    <strong>{createdWebsiteAd.brand_style || "default"}</strong>
-                  </div>
-                </div>
-
-                <div className="website-upload-preview">
-                  {createdWebsiteAd.banner_image_url ? (
-                    <figure>
-                      <img src={buildApiUrl(createdWebsiteAd.banner_image_url)} alt={`${createdWebsiteAd.product_name} banner`} />
-                      <figcaption>Horizontal banner</figcaption>
-                    </figure>
-                  ) : null}
-                  {createdWebsiteAd.vertical_image_url ? (
-                    <figure>
-                      <img src={buildApiUrl(createdWebsiteAd.vertical_image_url)} alt={`${createdWebsiteAd.product_name} vertical banner`} />
-                      <figcaption>Vertical banner</figcaption>
-                    </figure>
-                  ) : null}
-                </div>
-
-                <div className="upload-status-card__actions">
-                  <Link className="cute-link" to="/website-ads">
-                    Open website ads showcase
-                  </Link>
-                </div>
-              </div>
-            ) : null}
+            <WebsiteAdsFlow
+              active={uploadMode === "website"}
+              createdWebsiteAd={createdWebsiteAd}
+              error={error}
+              isShowcaseMode={isShowcaseMode}
+              onFormStateChange={setWebsiteFormState}
+              onResetFlow={() => resetFlow("website")}
+              onSubmit={handleWebsiteSubmit}
+              products={products}
+              productsLoading={productsLoading}
+              statusMessage={statusMessage}
+              submitting={submitting}
+              websiteFormState={websiteFormState}
+            />
           </motion.div>
         </AnimatePresence>
 
@@ -688,145 +343,4 @@ export function UploadPage() {
       </section>
     </div>
   );
-}
-
-function ShowcaseUploadPanel({ uploadMode }: { uploadMode: "video" | "website" }) {
-  const showcaseExamples = websiteAdsContent.examples;
-  const reducedMotion = useReducedMotion();
-
-  return (
-    <div className="upload-showcase-card">
-      <div className="upload-showcase-card__intro">
-        <span className="status-pill status-pill--progress">showcase build</span>
-        <h2>{uploadMode === "video" ? "Video pipeline preview" : "Website ad pipeline preview"}</h2>
-        <p>
-          This GitHub Pages deployment is a static showcase. The live generation backend is disabled here, so this page explains the
-          inputs and points to the completed examples instead of submitting real jobs.
-        </p>
-      </div>
-
-      {uploadMode === "video" ? (
-        <div className="upload-showcase-grid">
-          <article className="upload-showcase-block">
-            <h3>What the live video flow asks for</h3>
-            <ul>
-              <li>Campaign name</li>
-              <li>Brand or product name</li>
-              <li>One MP4 source clip</li>
-            </ul>
-          </article>
-
-          <article className="upload-showcase-block">
-            <h3>What happens in the real backend</h3>
-            <ul>
-              <li>Scene analysis and candidate slot detection</li>
-              <li>Operator review or manual override</li>
-              <li>Bridge generation and final preview stitching</li>
-            </ul>
-          </article>
-        </div>
-      ) : (
-        <div className="upload-showcase-grid">
-          <article className="upload-showcase-block">
-            <h3>What the live website-ad flow asks for</h3>
-            <ul>
-              <li>Saved product or inline product info</li>
-              <li>Article headline and article context</li>
-              <li>Visual direction for the creative</li>
-            </ul>
-          </article>
-
-          <article className="upload-showcase-block">
-            <h3>What the backend generates</h3>
-            <ul>
-              <li>One horizontal banner at 1200x628</li>
-              <li>One vertical sidebar ad at 300x600</li>
-              <li>Stored assets and reviewable gallery output</li>
-            </ul>
-          </article>
-        </div>
-      )}
-
-      {uploadMode === "website" ? (
-        <div className="upload-showcase-examples">
-          {showcaseExamples.map((example) => (
-            <motion.article
-              className="upload-showcase-example"
-              key={example.id}
-              whileHover={reducedMotion ? undefined : { y: -4 }}
-              transition={publicLayoutTransition}
-            >
-              <img src={example.previewImage} alt={`${example.title} injected placement preview`} />
-              <div>
-                <strong>
-                  {example.label}: {example.title}
-                </strong>
-                <p>{example.note}</p>
-              </div>
-            </motion.article>
-          ))}
-        </div>
-      ) : null}
-
-      <div className="upload-form__actions">
-        <Link className="cute-button" to={uploadMode === "video" ? "/gallery" : "/website-ads"}>
-          {uploadMode === "video" ? "Open video gallery" : "Open website ads gallery"}
-        </Link>
-        <Link className="cute-button cute-button--secondary" to="/">
-          <HeartIcon className="inline-icon" />
-          Back to home
-        </Link>
-      </div>
-    </div>
-  );
-}
-
-function buildFriendlyStatus(jobStatus?: string, currentStage?: string, previewStatus?: string) {
-  if (previewStatus === "completed") {
-    return publicCopy.upload.statusCompleted;
-  }
-
-  if (jobStatus === "failed") {
-    return "This run needs an operator pass before the final preview can recover.";
-  }
-
-  if (currentStage === "slot_selection" || currentStage === "line_review") {
-    return "Your clip is ready for studio review if you want to keep polishing the result.";
-  }
-
-  return publicCopy.upload.statusQueued;
-}
-
-function statusTone(jobStatus?: string, previewStatus?: string) {
-  if (previewStatus === "completed") {
-    return "success";
-  }
-  if (jobStatus === "failed" || previewStatus === "failed") {
-    return "error";
-  }
-  return "progress";
-}
-
-function buildUploadProgressSteps(jobStatus?: string, currentStage?: string, previewStatus?: string) {
-  const isCompleted = previewStatus === "completed";
-  const isReviewReady = currentStage === "slot_selection" || currentStage === "line_review";
-  const isAnalyzing = Boolean(currentStage) && !isReviewReady && !isCompleted;
-  const queueState = isCompleted || isReviewReady || isAnalyzing || jobStatus ? "done" : "active";
-  const analyzingState = isCompleted || isReviewReady ? "done" : isAnalyzing ? "active" : "idle";
-  const reviewState = isCompleted ? "done" : isReviewReady ? "active" : "idle";
-  const previewState = isCompleted ? "done" : isReviewReady ? "active" : "idle";
-
-  return [
-    { kicker: "step 1", label: "Queued", state: queueState },
-    { kicker: "step 2", label: "Analyzing", state: analyzingState },
-    { kicker: "step 3", label: "Review ready", state: reviewState },
-    { kicker: "step 4", label: "Preview", state: previewState },
-  ] as const;
-}
-
-function formatFileSize(bytes: number) {
-  if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(1)} KB`;
-  }
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

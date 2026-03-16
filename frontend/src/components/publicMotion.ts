@@ -1,6 +1,6 @@
 import type { Transition, Variants } from "framer-motion";
 
-export const publicRoutePaths = new Set(["/", "/about", "/gallery", "/results", "/upload", "/website-ads"]);
+export const publicRoutePaths = new Set(["/", "/about", "/gallery", "/studio", "/results", "/upload", "/website-ads"]);
 
 export const publicEase: [number, number, number, number] = [0.22, 1, 0.36, 1];
 export const publicExitEase: [number, number, number, number] = [0.4, 0, 1, 1];

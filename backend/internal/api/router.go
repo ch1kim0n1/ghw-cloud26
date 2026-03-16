@@ -50,6 +50,7 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 	mux.HandleFunc("GET /api/products", products)
 	mux.HandleFunc("POST /api/campaigns", campaigns)
 	mux.HandleFunc("GET /api/campaigns/{campaign_id}", campaigns)
+	mux.HandleFunc("GET /api/jobs", jobs)
 	mux.HandleFunc("GET /api/jobs/{job_id}", jobs)
 	mux.HandleFunc("GET /api/jobs/{job_id}/logs", jobs)
 	mux.HandleFunc("POST /api/jobs/{job_id}/start-analysis", analysis)
