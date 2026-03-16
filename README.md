@@ -37,7 +37,7 @@ Transform your videos with intelligent branded moments:
 
 ### Experimental Website Ad Lane  
 Create static ad experiments from article context:
-- Choose a saved product or create one inline
+- Choose a saved product or create one inline.
 - Paste your article headline and content
 - Choose a visual direction
 - Generate banner and vertical ads
